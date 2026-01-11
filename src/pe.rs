@@ -1,18 +1,22 @@
 use crate::ExpError;
 use crate::ExpError::ParseError;
+use crate::pe::export_address_table::{ImageExportDirectory, ParsedExportFunction, ParsedExportModule};
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::pe::import_address_table::{ImageImportDescriptor, ParsedImportFunction, ParsedImportModule};
-use std::fs::File;
-use std::io::{Seek, SeekFrom};
-use std::{io, mem};
+use crate::pe::import_address_table::{
+    ImageImportDescriptor, ParsedImportFunction, ParsedImportModule,
+};
 use byteorder::{LittleEndian, ReadBytesExt};
+use std::fs::File;
+use std::io:: SeekFrom;
+use std::{io, mem};
 
+pub mod export_address_table;
 pub mod image_dos_header;
 pub mod image_nt_header;
 pub mod image_section_header;
-mod import_address_table;
+pub mod import_address_table;
 
 pub struct PE64 {
     pub image_dos_header: ImageDosHeader,
@@ -31,7 +35,8 @@ impl PE64 {
             return Ok(Vec::new());
         }
 
-        let offset = self.rva_to_offset(import_dir.virtual_address)
+        let offset = self
+            .rva_to_offset(import_dir.virtual_address)
             .ok_or_else(|| ExpError::ParseError("Invalid Import Directory RVA".into()))?;
 
         reader.seek(io::SeekFrom::Start(offset as u64))?;
@@ -42,7 +47,6 @@ impl PE64 {
             let desc: ImageImportDescriptor = cast_from_mem(reader)?;
 
             // Check for Null Terminator (empty struct)
-            // SAFETY: should be 0 since the vector is 0 initialized
             if desc.original_first_thunk == 0 && desc.name == 0 {
                 break;
             }
@@ -51,10 +55,120 @@ impl PE64 {
 
         Ok(descriptors)
     }
-    fn read_string_current_pos<R: io::Read>(
+
+    pub fn get_exports<R: io::Read + io::Seek>(
+        &self,
+        reader: &mut R,
+    ) -> Result<Option<ImageExportDirectory>, ExpError> {
+        let export_dir = self.image_nt_headers64.optional_header.data_directory[0];
+
+        if export_dir.virtual_address == 0 {
+            return Ok(None);
+        }
+
+        let offset = self
+            .rva_to_offset(export_dir.virtual_address)
+            .ok_or_else(|| ExpError::ParseError("Invalid Export Directory RVA".into()))?;
+
+        reader.seek(io::SeekFrom::Start(offset as u64))?;
+
+        let desc: ImageExportDirectory = cast_from_mem(reader)?;
+
+        Ok(Some(desc))
+    }
+
+    pub fn get_parsed_exports<R: io::Read + io::Seek>(
         &self,
         reader: &mut R
-    ) -> Result<String, ExpError> {
+    ) -> Result<Vec<ParsedExportModule>, ExpError> {
+        let descriptor = match self.get_exports(reader)? {
+            Some(d) => d,
+            None => return Ok(Vec::new()), // No exports
+        };
+
+        let dll_name = self.read_string_at_rva(reader, descriptor.name)?;
+
+        let func_table_offset = self.rva_to_offset(descriptor.address_of_functions)
+            .ok_or(ExpError::ParseError("Invalid Export Address Table RVA".into()))?;
+
+        let name_table_offset = self.rva_to_offset(descriptor.address_of_names)
+            .ok_or(ExpError::ParseError("Invalid Export Name Table RVA".into()))?;
+
+        let ordinal_table_offset = self.rva_to_offset(descriptor.address_of_name_ordinals)
+            .ok_or(ExpError::ParseError("Invalid Export Ordinal Table RVA".into()))?;
+
+        let mut functions = Vec::with_capacity(descriptor.number_of_functions as usize);
+
+        reader.seek(io::SeekFrom::Start(func_table_offset as u64))?;
+
+        let mut func_rvas = Vec::with_capacity(descriptor.number_of_functions as usize);
+        for _ in 0..descriptor.number_of_functions {
+            func_rvas.push(reader.read_u32::<LittleEndian>()?);
+        }
+
+        // Initialize Parsed Functions
+        for (i, &rva) in func_rvas.iter().enumerate() {
+            functions.push(ParsedExportFunction {
+                name: None,
+                ordinal: descriptor.base + (i as u32), // Base + Index
+                func_rva: rva,
+                forwarder: None,
+            });
+        }
+
+        // We loop over the NAME table, which points to strings and gives us an index into the func table.
+        for i in 0..descriptor.number_of_names {
+            let name_ptr_offset = name_table_offset as u64 + (i as u64 * 4);
+            reader.seek(io::SeekFrom::Start(name_ptr_offset))?;
+            let name_rva = reader.read_u32::<LittleEndian>()?;
+
+            let ord_ptr_offset = ordinal_table_offset as u64 + (i as u64 * 2) ;
+            reader.seek(io::SeekFrom::Start(ord_ptr_offset as u64))?;
+            let func_idx = reader.read_u16::<LittleEndian>()? as usize;
+
+            if func_idx < functions.len() {
+                let restore_pos = reader.stream_position()?;
+
+                if let Some(offset) = self.rva_to_offset(name_rva) {
+                    reader.seek(io::SeekFrom::Start(offset as u64))?;
+                    let name = self.read_string_current_pos(reader)?;
+                    functions[func_idx].name = Some(name);
+                }
+
+                reader.seek(io::SeekFrom::Start(restore_pos))?;
+            }
+        }
+
+        let dir_rva = self.image_nt_headers64.optional_header.data_directory[0].virtual_address;
+        let dir_size = self.image_nt_headers64.optional_header.data_directory[0].size;
+        let export_range = dir_rva..(dir_rva + dir_size);
+
+        let final_functions = functions.into_iter()
+            .filter(|f| f.func_rva != 0) // Filter out non-existent functions (gaps)
+            .map(|mut f| {
+                if export_range.contains(&f.func_rva) {
+                    let restore_pos = reader.stream_position().unwrap_or(0);
+
+                    // The RVA points to a string inside the export section
+                    if let Ok(fwd_name) = self.read_string_at_rva(reader, f.func_rva) {
+                        f.forwarder = Some(fwd_name);
+                    }
+
+                    reader.seek(io::SeekFrom::Start(restore_pos)).ok();
+                }
+                f
+            })
+            .collect();
+
+        Ok(vec![ParsedExportModule {
+            name: dll_name,
+            descriptor,
+            functions: final_functions,
+        }])
+    }
+
+
+    fn read_string_current_pos<R: io::Read>(&self, reader: &mut R) -> Result<String, ExpError> {
         let mut bytes = Vec::new();
         let mut buf = [0u8; 1];
 
@@ -73,7 +187,10 @@ impl PE64 {
         Ok(String::from_utf8_lossy(&bytes).to_string())
     }
 
-    pub fn get_parsed_imports<R: io::Read + io::Seek>(&self, reader: &mut R) -> Result<Vec<ParsedImportModule>, ExpError> {
+    pub fn get_parsed_imports<R: io::Read + io::Seek>(
+        &self,
+        reader: &mut R,
+    ) -> Result<Vec<ParsedImportModule>, ExpError> {
         let mut modules = Vec::new();
 
         // Use your existing method to get raw descriptors
@@ -101,7 +218,9 @@ impl PE64 {
             loop {
                 let thunk_data = reader.read_u64::<LittleEndian>()?;
 
-                if thunk_data == 0 { break; } // End of list
+                if thunk_data == 0 {
+                    break;
+                } // End of list
 
                 let is_ordinal = (thunk_data & 0x8000_0000_0000_0000) != 0;
                 let mut func_name = None;
@@ -194,7 +313,11 @@ impl PE64 {
 
         None
     }
-    pub fn read_string_at_rva<R: io::Seek + io::Read>(&self, reader:&mut R, rva: u32) -> Result<String, ExpError> {
+    pub fn read_string_at_rva<R: io::Seek + io::Read>(
+        &self,
+        reader: &mut R,
+        rva: u32,
+    ) -> Result<String, ExpError> {
         let offset = self.rva_to_offset(rva).unwrap();
         reader.seek(SeekFrom::Start(offset as u64))?;
 
@@ -204,13 +327,14 @@ impl PE64 {
         // Read until null terminator
         loop {
             reader.read_exact(&mut buf)?;
-            if buf[0] == 0 { break; }
+            if buf[0] == 0 {
+                break;
+            }
             bytes.push(buf[0]);
         }
 
         Ok(String::from_utf8_lossy(&bytes).to_string())
     }
-
 }
 
 pub trait PESection {
@@ -233,5 +357,3 @@ pub fn cast_from_mem<R: io::Read, T: Sized + PESection + Clone>(
         Ok(header.clone())
     }
 }
-
-

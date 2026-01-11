@@ -19,7 +19,7 @@ impl PESection for ImageImportDescriptor {
 #[derive(Debug, Clone)]
 pub struct ParsedImportModule {
     pub name: String,
-    pub descriptor: ImageImportDescriptor, // Keep the raw descriptor if you need it later
+    pub descriptor: ImageImportDescriptor, 
     pub functions: Vec<ParsedImportFunction>,
 }
 
