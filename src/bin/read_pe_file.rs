@@ -51,7 +51,7 @@ fn main() {
             let imports = pe.get_parsed_imports(&mut reader).unwrap();
 
             for module in imports {
-                println!("DLL: {}", module.name);
+                println!("DLL (IMPORT): {}", module.name);
 
                 for func in module.functions {
                     match &func.name {
@@ -61,6 +61,19 @@ fn main() {
                 }
             }
 
+            let exports = pe.get_parsed_exports(&mut reader).unwrap();
+            if exports.is_empty() {
+                println!("No exports found");
+            }
+            for export in exports {
+                println!("DLL (EXPORT): {}", export.name);
+                for func in export.functions {
+                    match &func.name {
+                        Some(n) => println!("  - {} (Patch Address: 0x{:X})", n, func.func_rva),
+                        None => println!("  - Ordinal #{} (Patch Address: 0x{:X})", func.ordinal, pe.rva_to_offset(func.func_rva).unwrap()),
+                    }
+                }
+            }
 
         },
         Err(e) => {
