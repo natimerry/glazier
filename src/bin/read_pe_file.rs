@@ -34,7 +34,7 @@ fn main() {
 
             let file = File::open(filename).unwrap();
             let mut reader = BufReader::new(file);
-            
+
             for section in &pe.sections {
                 let name = section.resolve_section_name(&pe,&mut reader);
 
@@ -52,7 +52,6 @@ fn main() {
 
             for module in imports {
                 println!("DLL: {}", module.name);
-                // You can access module.descriptor.original_first_thunk here if needed
 
                 for func in module.functions {
                     match &func.name {

@@ -3,7 +3,7 @@ use crate::ExpError::ParseError;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::pe::impart_address_table::{ImageImportDescriptor, ParsedImportFunction, ParsedImportModule};
+use crate::pe::import_address_table::{ImageImportDescriptor, ParsedImportFunction, ParsedImportModule};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::{io, mem};
@@ -12,7 +12,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 pub mod image_dos_header;
 pub mod image_nt_header;
 pub mod image_section_header;
-mod impart_address_table;
+mod import_address_table;
 
 pub struct PE64 {
     pub image_dos_header: ImageDosHeader,
