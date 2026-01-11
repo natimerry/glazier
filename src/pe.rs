@@ -145,21 +145,18 @@ impl PE64 {
         Ok(modules)
     }
 
-    pub fn from_pe_file(filename: &str) -> Result<PE64, ExpError> {
-        let file = File::open(filename)?;
-        let mut cursor = io::BufReader::new(file);
-
-        let image_dos_header: ImageDosHeader = cast_from_mem(&mut cursor)?;
+    pub fn from_reader<R: io::Read + io::Seek>(cursor: &mut R) -> Result<PE64, ExpError> {
+        let image_dos_header: ImageDosHeader = cast_from_mem(cursor)?;
         cursor.seek(io::SeekFrom::Start(
             image_dos_header.nt_headers_offset() as u64
         ))?;
 
-        let image_nt_headers64: ImageNtHeaders64 = cast_from_mem(&mut cursor)?;
+        let image_nt_headers64: ImageNtHeaders64 = cast_from_mem(cursor)?;
 
         let num_sections = image_nt_headers64.file_header.number_of_sections;
         let mut sections = Vec::with_capacity(num_sections as usize);
         for _ in 0..num_sections {
-            let section: ImageSectionHeader = cast_from_mem(&mut cursor)?;
+            let section: ImageSectionHeader = cast_from_mem(cursor)?;
             sections.push(section);
         }
 
@@ -168,6 +165,12 @@ impl PE64 {
             image_nt_headers64,
             sections,
         })
+    }
+    pub fn from_pe_file(filename: &str) -> Result<PE64, ExpError> {
+        let file = File::open(filename)?;
+        let mut cursor = io::BufReader::new(file);
+
+        Self::from_reader(&mut cursor)
     }
     pub fn rva_to_offset(&self, rva: u32) -> Option<u32> {
         if rva < self.image_nt_headers64.optional_header.size_of_headers {
