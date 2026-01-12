@@ -75,6 +75,9 @@ fn main() {
                 }
             }
 
+            println!("Total Imports: {}", pe.get_parsed_imports(&mut reader).unwrap().len());
+            println!("Total Exports: {}", pe.get_parsed_exports(&mut reader).unwrap().len());
+
         },
         Err(e) => {
             eprintln!("\n[!] Fatal Error: Failed to parse PE file.");
