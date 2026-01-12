@@ -59,7 +59,6 @@ pub fn find_dll_base(dll_name: impl ToString) -> Result<u64, ExpError> {
                     core::slice::from_raw_parts(unicode.Buffer, (unicode.Length / 2) as usize);
 
                 let name = String::from_utf16_lossy(slice);
-                println!("Found dll: {}", name);
 
                 let name = name.to_lowercase();
 
