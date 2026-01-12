@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub mod pe;
+pub mod runtime;
 
 #[derive(Error, Debug)]
 pub enum ExpError{
@@ -10,4 +11,7 @@ pub enum ExpError{
     
     #[error("Parse error: {0}")]
     ParseError(String),
+    
+    #[error("Export Error: {0}")]
+    ExportError(String),
 }
