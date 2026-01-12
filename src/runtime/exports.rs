@@ -13,6 +13,21 @@ macro_rules! containing_record {
     }};
 }
 
+///NOTE: this library doesnt aim to be compatible with aarch64, this is put if for one very specific usecase
+/// and may be removed in future builds
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn get_teb() -> *mut TEB {
+    let teb: *mut TEB;
+    core::arch::asm!(
+    "mrs {0}, tpidr_el0",
+    out(reg) teb,
+    options(nostack, preserves_flags)
+    );
+    teb
+}
+
+
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
 unsafe fn get_teb() -> *mut TEB {
