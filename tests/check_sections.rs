@@ -4,8 +4,7 @@ use std::{
     io::BufReader,
     path::PathBuf,
 };
-
-use libwinexploit::pe::PE64;
+use libwinexploit::PE64Static;
 
 const SAMPLE_EXE: &str = "app_custom_section_with_imports.exe";
 const SAMPLE_C: &str = "tests/samples/app_custom_section_with_imports.c";
@@ -16,7 +15,7 @@ fn get_c_binary_path() -> PathBuf {
         .join(SAMPLE_EXE)
 }
 
-fn load_pe() -> Result<(PE64, BufReader<File>), String> {
+fn load_pe() -> Result<(PE64Static, BufReader<File>), String> {
     let path = get_c_binary_path();
 
     if !path.exists() {
@@ -28,7 +27,7 @@ fn load_pe() -> Result<(PE64, BufReader<File>), String> {
         ));
     }
 
-    let pe = PE64::from_pe_file(
+    let pe = PE64Static::from_pe_file(
         path.to_str().ok_or("invalid UTF-8 path")?
     )
         .map_err(|e| format!("failed to parse PE: {e:?}"))?;

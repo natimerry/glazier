@@ -2,7 +2,7 @@ use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::process;
-use libwinexploit::pe::PE64;
+use libwinexploit::pe::pe64_static::PE64Static;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -14,7 +14,7 @@ fn main() {
     let filename = &args[1];
     println!("Parsing file: {}", filename);
 
-    match PE64::from_pe_file(filename) {
+    match PE64Static::from_pe_file(filename) {
         Ok(pe) => {
             println!("\n[+] PE64 Header Parsed Successfully");
             println!("========================================");
