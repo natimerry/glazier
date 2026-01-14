@@ -23,10 +23,9 @@ impl ImageSectionHeader {
             .trim_matches('\0')
             .to_string();
 
-        if name_str.starts_with('/') {
-            // long name detected, parse with coff string
-            if let Ok(offset) = name_str[1..].parse::<u32>() {
-                return read_coff_string(pe,offset, reader).unwrap_or(name_str);
+        if let Some(name_str) = name_str.strip_prefix('/') {
+            if let Ok(offset) = name_str.parse::<u32>() {
+                return read_coff_string(pe,offset, reader).unwrap_or(name_str.to_string());
             }
         }
         name_str
