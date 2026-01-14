@@ -1,20 +1,20 @@
-use crate::{ByteReader, ExpError};
-use crate::pe::{PESection};
+use crate::pe::PESection;
 use crate::pe::pe64_static::PE64Static;
+use crate::{ByteReader, ExpError};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct ImageSectionHeader {
-    pub name: [u8; 8],             // UTF-8/ASCII name (e.g., ".text")
-    pub virtual_size: u32,         // Size in memory (Misc.VirtualSize)
-    pub virtual_address: u32,      // RVA start in memory
-    pub size_of_raw_data: u32,     // Size on disk
-    pub pointer_to_raw_data: u32,  // File offset to raw data
+    pub name: [u8; 8],            // UTF-8/ASCII name (e.g., ".text")
+    pub virtual_size: u32,        // Size in memory (Misc.VirtualSize)
+    pub virtual_address: u32,     // RVA start in memory
+    pub size_of_raw_data: u32,    // Size on disk
+    pub pointer_to_raw_data: u32, // File offset to raw data
     pub pointer_to_relocations: u32,
     pub pointer_to_linenumbers: u32,
     pub number_of_relocations: u16,
     pub number_of_linenumbers: u16,
-    pub characteristics: u32,      // R/W/X permissions
+    pub characteristics: u32, // R/W/X permissions
 }
 
 impl ImageSectionHeader {
@@ -23,10 +23,10 @@ impl ImageSectionHeader {
             .trim_matches('\0')
             .to_string();
 
-        if let Some(name_str) = name_str.strip_prefix('/') {
-            if let Ok(offset) = name_str.parse::<u32>() {
-                return read_coff_string(pe,offset, reader).unwrap_or(name_str.to_string());
-            }
+        if let Some(name_str) = name_str.strip_prefix('/')
+            && let Ok(offset) = name_str.parse::<u32>()
+        {
+            return read_coff_string(pe, offset, reader).unwrap_or(name_str.to_string());
         }
         name_str
     }
@@ -35,7 +35,7 @@ impl ImageSectionHeader {
 fn read_coff_string<R: ByteReader>(
     pe: &PE64Static,
     string_table_offset: u32,
-    reader: &mut R
+    reader: &mut R,
 ) -> Result<String, ExpError> {
     let file_header = &pe.image_nt_headers64.file_header;
 
@@ -53,8 +53,7 @@ fn read_coff_string<R: ByteReader>(
     reader.read_c_string()
 }
 
-impl PESection for ImageSectionHeader
-{
+impl PESection for ImageSectionHeader {
     fn is_valid(&self) -> bool {
         true
     }

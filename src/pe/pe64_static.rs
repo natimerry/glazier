@@ -1,14 +1,18 @@
 use crate::pe::cast_from_mem;
-use std::fs::File;
-use std::io;
-use std::io::{BufReader, Read, Seek, SeekFrom};
-use byteorder::{LittleEndian, ReadBytesExt};
-use crate::{ByteReader, ExpError};
-use crate::pe::export_address_table::{ImageExportDirectory, ParsedExportFunction, ParsedExportModule};
+use crate::pe::export_address_table::{
+    ImageExportDirectory, ParsedExportFunction, ParsedExportModule,
+};
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::pe::import_address_table::{ImageImportDescriptor, ParsedImportFunction, ParsedImportModule};
+use crate::pe::import_address_table::{
+    ImageImportDescriptor, ParsedImportFunction, ParsedImportModule,
+};
+use crate::{ByteReader, ExpError};
+use byteorder::{LittleEndian, ReadBytesExt};
+use std::fs::File;
+use std::io;
+use std::io::{BufReader, Read, Seek, SeekFrom};
 
 pub struct PE64Static {
     pub image_dos_header: ImageDosHeader,
@@ -16,7 +20,7 @@ pub struct PE64Static {
     pub sections: Vec<ImageSectionHeader>,
 }
 
-impl ByteReader for BufReader<File>{
+impl ByteReader for BufReader<File> {
     fn read_u8(&mut self) -> Result<u8, ExpError> {
         Ok(byteorder::ReadBytesExt::read_u8(self)?)
     }
@@ -73,11 +77,10 @@ impl ByteReader for BufReader<File>{
         String::from_utf8(bytes).map_err(|x| ExpError::ParseError(x.to_string()))
     }
 
-
     fn read_string_at_offset(&mut self, offset: usize) -> Result<String, ExpError> {
         Seek::seek(self, SeekFrom::Start(offset as u64))?;
 
-        return self.read_c_string();
+        self.read_c_string()
     }
 
     fn seek(&mut self, offset: usize) -> Result<u64, ExpError> {
@@ -86,11 +89,10 @@ impl ByteReader for BufReader<File>{
     }
 
     fn current_offset(&mut self) -> Result<usize, ExpError> {
-        let x= self.stream_position()?;
+        let x = self.stream_position()?;
         Ok(x as usize)
     }
 }
-
 
 impl PE64Static {
     pub fn get_imports<R: ByteReader + std::io::Read>(
@@ -170,7 +172,7 @@ impl PE64Static {
 
     pub fn get_parsed_exports<R: ByteReader + std::io::Read>(
         &self,
-        reader: &mut R
+        reader: &mut R,
     ) -> Result<Vec<ParsedExportModule>, ExpError> {
         let descriptor = match self.get_exports(reader)? {
             Some(d) => d,
@@ -179,14 +181,21 @@ impl PE64Static {
 
         let dll_name = self.read_string_at_rva(reader, descriptor.name)?;
 
-        let func_table_offset = self.rva_to_offset(descriptor.address_of_functions)
-            .ok_or(ExpError::ParseError("Invalid Export Address Table RVA".into()))?;
+        let func_table_offset =
+            self.rva_to_offset(descriptor.address_of_functions)
+                .ok_or(ExpError::ParseError(
+                    "Invalid Export Address Table RVA".into(),
+                ))?;
 
-        let name_table_offset = self.rva_to_offset(descriptor.address_of_names)
+        let name_table_offset = self
+            .rva_to_offset(descriptor.address_of_names)
             .ok_or(ExpError::ParseError("Invalid Export Name Table RVA".into()))?;
 
-        let ordinal_table_offset = self.rva_to_offset(descriptor.address_of_name_ordinals)
-            .ok_or(ExpError::ParseError("Invalid Export Ordinal Table RVA".into()))?;
+        let ordinal_table_offset = self
+            .rva_to_offset(descriptor.address_of_name_ordinals)
+            .ok_or(ExpError::ParseError(
+                "Invalid Export Ordinal Table RVA".into(),
+            ))?;
 
         let mut functions = Vec::with_capacity(descriptor.number_of_functions as usize);
 
@@ -213,8 +222,8 @@ impl PE64Static {
             reader.seek(name_ptr_offset as usize)?;
             let name_rva = reader.read_u32()?;
 
-            let ord_ptr_offset = ordinal_table_offset as u64 + (i as u64 * 2) ;
-            reader.seek(ord_ptr_offset as u64 as usize)?;
+            let ord_ptr_offset = ordinal_table_offset as u64 + (i as u64 * 2);
+            reader.seek(ord_ptr_offset as usize)?;
             let func_idx = reader.read_u16::<LittleEndian>()? as usize;
 
             if func_idx < functions.len() {
@@ -234,7 +243,8 @@ impl PE64Static {
         let dir_size = self.image_nt_headers64.optional_header.data_directory[0].size;
         let export_range = dir_rva..(dir_rva + dir_size);
 
-        let final_functions = functions.into_iter()
+        let final_functions = functions
+            .into_iter()
             .filter(|f| f.func_rva != 0) // Filter out non-existent functions (gaps)
             .map(|mut f| {
                 if export_range.contains(&f.func_rva) {
@@ -257,7 +267,6 @@ impl PE64Static {
             functions: final_functions,
         }])
     }
-
 
     pub fn get_parsed_imports<R: ByteReader + std::io::Read>(
         &self,
@@ -313,7 +322,7 @@ impl PE64Static {
                         func_name = Some(reader.read_c_string()?);
                     }
 
-                    reader.seek(restore_pos as usize)?;
+                    reader.seek(restore_pos)?;
                 }
 
                 functions.push(ParsedImportFunction {
@@ -345,14 +354,11 @@ impl PE64Static {
 
         let image_dos_header: ImageDosHeader = cast_from_mem(&mut reader)?;
 
-        reader.seek(
-            image_dos_header.nt_headers_offset() as usize,
-        )?;
+        reader.seek(image_dos_header.nt_headers_offset() as usize)?;
 
         let image_nt_headers64: ImageNtHeaders64 = cast_from_mem(&mut reader)?;
 
-        let num_sections =
-            image_nt_headers64.file_header.number_of_sections;
+        let num_sections = image_nt_headers64.file_header.number_of_sections;
 
         let mut sections = Vec::with_capacity(num_sections as usize);
         for _ in 0..num_sections {
@@ -395,4 +401,3 @@ impl PE64Static {
         Ok(s)
     }
 }
-

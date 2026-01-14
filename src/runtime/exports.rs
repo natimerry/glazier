@@ -62,7 +62,7 @@ pub fn find_dll_base(dll_name: impl ToString) -> Result<u64, ExpError> {
 
         let ldr = (*peb).Ldr;
         let head = &mut (*ldr).InMemoryOrderModuleList;
-        let mut curr = (*head).Flink;
+        let mut curr = head.Flink;
 
         loop {
             let dll_entry = containing_record!(curr, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);

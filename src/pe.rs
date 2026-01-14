@@ -9,8 +9,6 @@ pub mod image_section_header;
 pub mod import_address_table;
 pub mod pe64_static;
 
-
-
 pub trait PESection {
     fn is_valid(&self) -> bool;
 }
@@ -20,7 +18,7 @@ pub fn cast_from_mem<R: io::Read, T: Sized + PESection + Clone>(
 ) -> Result<T, ExpError> {
     unsafe {
         let mut buffer = vec![0u8; mem::size_of::<T>()];
-        reader.read_exact(&mut buffer.as_mut_slice())?;
+        reader.read_exact(buffer.as_mut_slice())?;
 
         let header = &*(buffer.as_ptr() as *const T);
 
