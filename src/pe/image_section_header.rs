@@ -1,6 +1,8 @@
 use std::io;
-use crate::ExpError;
-use crate::pe::{PESection, PE64};
+use std::io::Seek;
+use crate::{ByteReader, ExpError};
+use crate::pe::{PESection};
+use crate::pe::pe64_static::PE64Static;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
@@ -18,7 +20,7 @@ pub struct ImageSectionHeader {
 }
 
 impl ImageSectionHeader {
-    pub fn resolve_section_name<R: io::Seek + io::Read>(&self, pe: &PE64, reader: &mut R) -> String {
+    pub fn resolve_section_name<R: ByteReader>(&self, pe: &PE64Static, reader: &mut R) -> String {
         let name_str = String::from_utf8_lossy(&self.name)
             .trim_matches('\0')
             .to_string();
@@ -33,8 +35,8 @@ impl ImageSectionHeader {
     }
 }
 
-fn read_coff_string<R: io::Read + io::Seek>(
-    pe: &PE64,
+fn read_coff_string<R: ByteReader>(
+    pe: &PE64Static,
     string_table_offset: u32,
     reader: &mut R
 ) -> Result<String, ExpError> {
@@ -49,9 +51,9 @@ fn read_coff_string<R: io::Read + io::Seek>(
 
     let target_offset = string_table_base + string_table_offset;
 
-    reader.seek(io::SeekFrom::Start(target_offset as u64))?;
+    reader.seek(target_offset as usize)?;
 
-    pe.read_string_current_pos(reader)
+    reader.read_c_string()
 }
 
 impl PESection for ImageSectionHeader

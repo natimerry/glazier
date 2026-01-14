@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use libwinexploit::pe::PE64;
+use libwinexploit::PE64Static;
 
 fn get_sample_path(filename: &str) -> PathBuf {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -20,7 +20,7 @@ fn test_dos_header() -> Result<(), String> {
         );
     }
 
-    let pe = PE64::from_pe_file(sample.to_str().unwrap())
+    let pe = PE64Static::from_pe_file(sample.to_str().unwrap())
         .map_err(|e| format!("failed to parse PE: {e:?}"))?;
 
     if pe.image_dos_header.e_magic != 0x5A4D {
@@ -50,7 +50,7 @@ fn test_rva_resolution() -> Result<(), String> {
         ));
     }
 
-    let pe = PE64::from_pe_file(
+    let pe = PE64Static::from_pe_file(
         sample
             .to_str()
             .ok_or("invalid UTF-8 path for test sample")?
