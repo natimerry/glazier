@@ -1,4 +1,3 @@
-use std::io::SeekFrom;
 use thiserror::Error;
 
 pub mod pe;

@@ -1,5 +1,3 @@
-use std::io;
-use std::io::Seek;
 use crate::{ByteReader, ExpError};
 use crate::pe::{PESection};
 use crate::pe::pe64_static::PE64Static;
