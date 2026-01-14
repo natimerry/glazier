@@ -1,15 +1,5 @@
 use crate::ExpError;
 use crate::ExpError::ParseError;
-use crate::pe::export_address_table::{ImageExportDirectory, ParsedExportFunction, ParsedExportModule};
-use crate::pe::image_dos_header::ImageDosHeader;
-use crate::pe::image_nt_header::ImageNtHeaders64;
-use crate::pe::image_section_header::ImageSectionHeader;
-use crate::pe::import_address_table::{
-    ImageImportDescriptor, ParsedImportFunction, ParsedImportModule,
-};
-use byteorder::{LittleEndian, ReadBytesExt};
-use std::fs::File;
-use std::io:: SeekFrom;
 use std::{io, mem};
 
 pub mod export_address_table;

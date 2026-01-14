@@ -1,8 +1,8 @@
 use crate::pe::cast_from_mem;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use std::io::{BufReader, Read, Seek, SeekFrom};
+use byteorder::{LittleEndian, ReadBytesExt};
 use crate::{ByteReader, ExpError};
 use crate::pe::export_address_table::{ImageExportDirectory, ParsedExportFunction, ParsedExportModule};
 use crate::pe::image_dos_header::ImageDosHeader;
