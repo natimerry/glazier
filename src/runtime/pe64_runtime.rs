@@ -1,4 +1,3 @@
-use std::{f64::NAN, mem::offset_of};
 
 use windows_sys::Win32::System::{Threading::TEB, WindowsProgramming::LDR_DATA_TABLE_ENTRY};
 
@@ -158,5 +157,32 @@ impl PE64Runtime {
         })
     }
     
+    pub fn section_containing_rva(&self, rva: u32) -> Option<&ImageSectionHeader> {
+        self.sections().iter().find(|s| {
+            rva >= s.virtual_address && rva < s.virtual_address + s.virtual_size
+        })
+    }
+    
+    
+    #[inline]
+    pub fn rva_to_va(&self, rva: u32) -> u64 {
+        self.module_base + rva as u64
+    }
+    
+    
+    #[inline]
+    pub fn va_to_rva(&self, va: u64) -> Option<u32> {
+        if va >= self.module_base {
+            Some((va - self.module_base) as u32)
+        } else {
+            None
+        }
+    }
+    
+
+    #[inline]
+    pub fn has_exports(&self) -> bool {
+        !self.export_dir.is_null()
+    }    
     
 }
