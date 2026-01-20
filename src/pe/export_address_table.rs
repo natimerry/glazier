@@ -32,6 +32,7 @@ pub struct ParsedExportModule {
 
 #[derive(Debug, Clone)]
 pub struct ParsedExportFunction {
+    pub func_addr: usize,
     pub name: Option<String>,      // Function name (None if exported by ordinal only)
     pub ordinal: u32,              // The final ordinal (Base + Index)
     pub func_rva: u32,             // The RVA pointing to the code (or forwarder string)

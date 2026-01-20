@@ -69,8 +69,8 @@ fn main() {
                 println!("DLL (EXPORT): {}", export.name);
                 for func in export.functions {
                     match &func.name {
-                        Some(n) => println!("  - {} (Patch Address: 0x{:X})", n, func.func_rva),
-                        None => println!("  - Ordinal #{} (Patch Address: 0x{:X})", func.ordinal, pe.rva_to_offset(func.func_rva).unwrap()),
+                        Some(n) => println!("  - {} (Dyn Patch Address: 0x{:X} | Byte Offset: 0x{:X})", n, func.func_rva, pe.rva_to_offset(func.func_rva as u32).unwrap()),
+                        None => println!("  - Ordinal #{} (Dyn Patch Address: 0x{:X} Local Patch Address: 0x{:X})", func.ordinal, func.func_rva, pe.rva_to_offset(func.func_rva as u32).unwrap()),
                     }
                 }
             }

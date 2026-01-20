@@ -7,7 +7,7 @@ use crate::{
         export_address_table::ImageExportDirectory,
         image_dos_header::ImageDosHeader,
         image_nt_header::{IMAGE_DIRECTORY_ENTRY_EXPORT, ImageNtHeaders64},
-        image_section_header::ImageSectionHeader,
+        image_section_header::ImageSectionHeader, import_address_table::ParsedImportModule,
     },
     runtime::exports::get_teb,
 };
@@ -185,4 +185,6 @@ impl PE64Runtime {
         !self.export_dir.is_null()
     }    
     
+    
+ 
 }
