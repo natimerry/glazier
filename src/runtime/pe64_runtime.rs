@@ -1,4 +1,3 @@
-
 use windows_sys::Win32::System::{Threading::TEB, WindowsProgramming::LDR_DATA_TABLE_ENTRY};
 
 use crate::{
@@ -7,9 +6,9 @@ use crate::{
         export_address_table::ImageExportDirectory,
         image_dos_header::ImageDosHeader,
         image_nt_header::{IMAGE_DIRECTORY_ENTRY_EXPORT, ImageNtHeaders64},
-        image_section_header::ImageSectionHeader, import_address_table::ParsedImportModule,
+        image_section_header::ImageSectionHeader,
     },
-    runtime::exports::get_teb,
+    utils::get_teb,
 };
 
 pub struct PE64Runtime {
@@ -97,12 +96,11 @@ impl PE64Runtime {
                     break;
                 }
             }
-            
+
             Err(ExpError::ExportError(format!(
                 "Module not found: {}",
                 target_name
             )))
-
         }
     }
 
@@ -138,14 +136,12 @@ impl PE64Runtime {
             })
         }
     }
-    
+
     pub fn sections(&self) -> &[ImageSectionHeader] {
-        unsafe {
-            core::slice::from_raw_parts(self.section_headers, self.section_count as usize)
-        }
+        unsafe { core::slice::from_raw_parts(self.section_headers, self.section_count as usize) }
     }
-    
-    pub fn find_section(&self, name:&str) -> Option<&ImageSectionHeader> {
+
+    pub fn find_section(&self, name: &str) -> Option<&ImageSectionHeader> {
         self.sections().iter().find(|section| {
             let section_name = unsafe {
                 core::str::from_utf8_unchecked(core::slice::from_raw_parts(
@@ -156,20 +152,18 @@ impl PE64Runtime {
             section_name == name
         })
     }
-    
+
     pub fn section_containing_rva(&self, rva: u32) -> Option<&ImageSectionHeader> {
-        self.sections().iter().find(|s| {
-            rva >= s.virtual_address && rva < s.virtual_address + s.virtual_size
-        })
+        self.sections()
+            .iter()
+            .find(|s| rva >= s.virtual_address && rva < s.virtual_address + s.virtual_size)
     }
-    
-    
+
     #[inline]
     pub fn rva_to_va(&self, rva: u32) -> u64 {
         self.module_base + rva as u64
     }
-    
-    
+
     #[inline]
     pub fn va_to_rva(&self, va: u64) -> Option<u32> {
         if va >= self.module_base {
@@ -178,13 +172,9 @@ impl PE64Runtime {
             None
         }
     }
-    
 
     #[inline]
     pub fn has_exports(&self) -> bool {
         !self.export_dir.is_null()
-    }    
-    
-    
- 
+    }
 }

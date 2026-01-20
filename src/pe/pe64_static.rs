@@ -1,15 +1,13 @@
-use crate::pe::cast_from_mem;
-use crate::pe::export_address_table::{
-    ImageExportDirectory, ParsedExportFunction, ParsedExportModule,
-};
+use byteorder::LittleEndian;
+
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
 use crate::pe::import_address_table::{
     ImageImportDescriptor, ParsedImportFunction, ParsedImportModule,
 };
+use crate::utils::cast_from_mem;
 use crate::{ByteReader, ExpError};
-use byteorder::{LittleEndian, ReadBytesExt};
 use std::fs::File;
 use std::io;
 use std::io::{BufReader, Read, Seek, SeekFrom};
@@ -147,126 +145,6 @@ impl PE64Static {
         }
 
         None
-    }
-
-    pub fn get_exports<R: ByteReader + std::io::Read>(
-        &self,
-        reader: &mut R,
-    ) -> Result<Option<ImageExportDirectory>, ExpError> {
-        let export_dir = self.image_nt_headers64.optional_header.data_directory[0];
-
-        if export_dir.virtual_address == 0 {
-            return Ok(None);
-        }
-
-        let offset = self
-            .rva_to_offset(export_dir.virtual_address)
-            .ok_or_else(|| ExpError::ParseError("Invalid Export Directory RVA".into()))?;
-
-        reader.seek(offset as usize)?;
-
-        let desc: ImageExportDirectory = cast_from_mem(reader)?;
-
-        Ok(Some(desc))
-    }
-
-    pub fn get_parsed_exports<R: ByteReader + std::io::Read>(
-        &self,
-        reader: &mut R,
-    ) -> Result<Vec<ParsedExportModule>, ExpError> {
-        let descriptor = match self.get_exports(reader)? {
-            Some(d) => d,
-            None => return Ok(Vec::new()), // No exports
-        };
-
-        let dll_name = self.read_string_at_rva(reader, descriptor.name)?;
-
-        let func_table_offset =
-            self.rva_to_offset(descriptor.address_of_functions)
-                .ok_or(ExpError::ParseError(
-                    "Invalid Export Address Table RVA".into(),
-                ))?;
-
-        let name_table_offset = self
-            .rva_to_offset(descriptor.address_of_names)
-            .ok_or(ExpError::ParseError("Invalid Export Name Table RVA".into()))?;
-
-        let ordinal_table_offset = self
-            .rva_to_offset(descriptor.address_of_name_ordinals)
-            .ok_or(ExpError::ParseError(
-                "Invalid Export Ordinal Table RVA".into(),
-            ))?;
-
-        let mut functions = Vec::with_capacity(descriptor.number_of_functions as usize);
-
-        reader.seek(func_table_offset as u64 as usize)?;
-
-        let mut func_rvas = Vec::with_capacity(descriptor.number_of_functions as usize);
-        for _ in 0..descriptor.number_of_functions {
-            func_rvas.push(reader.read_u32()?);
-        }
-
-        // Initialize Parsed Functions
-        for (i, &rva) in func_rvas.iter().enumerate() {
-            functions.push(ParsedExportFunction {
-                name: None,
-                ordinal: descriptor.base + (i as u32), // Base + Index
-                func_rva: rva,
-                func_addr: self.rva_to_offset(rva).unwrap() as usize,
-                forwarder: None,
-            });
-        }
-
-        // We loop over the NAME table, which points to strings and gives us an index into the func table.
-        for i in 0..descriptor.number_of_names {
-            let name_ptr_offset = name_table_offset as u64 + (i as u64 * 4);
-            reader.seek(name_ptr_offset as usize)?;
-            let name_rva = reader.read_u32()?;
-
-            let ord_ptr_offset = ordinal_table_offset as u64 + (i as u64 * 2);
-            reader.seek(ord_ptr_offset as usize)?;
-            let func_idx = reader.read_u16::<LittleEndian>()? as usize;
-
-            if func_idx < functions.len() {
-                let restore_pos = reader.current_offset()?;
-
-                if let Some(offset) = self.rva_to_offset(name_rva) {
-                    reader.seek(offset as u64 as usize)?;
-                    let name = reader.read_c_string()?;
-                    functions[func_idx].name = Some(name);
-                }
-
-                reader.seek(restore_pos)?;
-            }
-        }
-
-        let dir_rva = self.image_nt_headers64.optional_header.data_directory[0].virtual_address;
-        let dir_size = self.image_nt_headers64.optional_header.data_directory[0].size;
-        let export_range = dir_rva..(dir_rva + dir_size);
-
-        let final_functions = functions
-            .into_iter()
-            .filter(|f| f.func_rva != 0) // Filter out non-existent functions (gaps)
-            .map(|mut f| {
-                if export_range.contains(&(f.func_rva)) {
-                    let restore_pos = reader.current_offset().unwrap_or(0);
-
-                    // The RVA points to a string inside the export section
-                    if let Ok(fwd_name) = self.read_string_at_rva(reader, f.func_rva as u32) {
-                        f.forwarder = Some(fwd_name);
-                    }
-
-                    reader.seek(restore_pos).ok();
-                }
-                f
-            })
-            .collect();
-
-        Ok(vec![ParsedExportModule {
-            name: dll_name,
-            descriptor,
-            functions: final_functions,
-        }])
     }
 
     pub fn get_parsed_imports<R: ByteReader + std::io::Read>(
