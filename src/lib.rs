@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod pe;
 #[cfg(feature = "runtime")]
 pub mod runtime;
+pub mod utils;
 
 pub use pe::pe64_static::*;
 
