@@ -212,6 +212,7 @@ impl PE64Static {
                 name: None,
                 ordinal: descriptor.base + (i as u32), // Base + Index
                 func_rva: rva,
+                func_addr: self.rva_to_offset(rva).unwrap() as usize,
                 forwarder: None,
             });
         }
@@ -247,11 +248,11 @@ impl PE64Static {
             .into_iter()
             .filter(|f| f.func_rva != 0) // Filter out non-existent functions (gaps)
             .map(|mut f| {
-                if export_range.contains(&f.func_rva) {
+                if export_range.contains(&(f.func_rva)) {
                     let restore_pos = reader.current_offset().unwrap_or(0);
 
                     // The RVA points to a string inside the export section
-                    if let Ok(fwd_name) = self.read_string_at_rva(reader, f.func_rva) {
+                    if let Ok(fwd_name) = self.read_string_at_rva(reader, f.func_rva as u32) {
                         f.forwarder = Some(fwd_name);
                     }
 

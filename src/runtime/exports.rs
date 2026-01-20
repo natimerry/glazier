@@ -1,5 +1,5 @@
 use crate::ExpError;
-use crate::pe::export_address_table::ImageExportDirectory;
+use crate::pe::export_address_table::{ImageExportDirectory, ParsedExportFunction};
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::runtime::pe64_runtime::PE64Runtime;
@@ -43,13 +43,15 @@ pub unsafe fn get_teb() -> *mut TEB {
         teb
     }
 }
-
 impl PE64Runtime {
-    pub fn exports(&self) -> ExportIterator {
-        ExportIterator::new(self)
+    pub fn exports(&self) -> RuntimeParsedExportIterator<'_> {
+        RuntimeParsedExportIterator::new(self)
     }
 
-    pub fn find_export(&self, export_name: impl ToString) -> Result<u64, ExpError> {
+    pub fn find_export(
+        &self,
+        export_name: impl ToString,
+    ) -> Result<ParsedExportFunction, ExpError> {
         unsafe {
             if !self.has_exports() {
                 return Err(ExpError::ExportError(
@@ -86,7 +88,13 @@ impl PE64Runtime {
                     let ordinal = *ordinal_table.add(i as usize) as usize;
 
                     let func_rva = *func_table.add(ordinal) as usize;
-                    return Ok(self.module_base + func_rva as u64);
+                    return Ok(ParsedExportFunction {
+                        name: Some(export_name.to_string()),
+                        ordinal: ordinal as u32,
+                        func_addr: self.module_base as usize + func_rva,
+                        func_rva: func_rva as u32,
+                        forwarder: None,
+                    });
                 }
             }
             Err(ExpError::ExportError(format!(
@@ -97,23 +105,18 @@ impl PE64Runtime {
     }
 }
 
-pub struct ExportIterator<'a> {
-    module_base: u64,
+pub struct RuntimeParsedExportIterator<'a> {
     runtime: &'a PE64Runtime,
     index: usize,
 }
 
-impl<'a> ExportIterator<'a> {
-    pub fn new(module_base: u64, runtime: &'a PE64Runtime) -> Self {
-        Self {
-            module_base,
-            runtime,
-            index: 0,
-        }
+impl<'a> RuntimeParsedExportIterator<'a> {
+    pub fn new(runtime: &'a PE64Runtime) -> Self {
+        Self { runtime, index: 0 }
     }
 }
 
-impl<'a> Iterator for ExportIterator<'a> {
+impl<'a> Iterator for RuntimeParsedExportIterator<'a> {
     type Item = ExportedFunction;
 
     fn next(&mut self) -> Option<Self::Item> {
