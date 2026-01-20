@@ -1,10 +1,12 @@
+use std::ffi::c_char;
+use std::ops::Add;
 use crate::ExpError;
-use crate::pe::export_address_table::ImageExportDirectory;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
-use std::ffi::c_char;
+use crate::runtime::pe64_runtime::PE64Runtime;
 use windows_sys::Win32::System::Threading::TEB;
 use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
+use crate::pe::export_address_table::ImageExportDirectory;
 
 #[macro_export]
 macro_rules! containing_record {
@@ -28,6 +30,7 @@ unsafe fn get_teb() -> *mut TEB {
     teb
 }
 
+
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
 pub unsafe fn get_teb() -> *mut TEB {
@@ -42,6 +45,64 @@ pub unsafe fn get_teb() -> *mut TEB {
     }
 }
 
+impl PE64Runtime{
+    pub fn exports(&self) -> ExportIterator {
+        ExportIterator::new(self)
+    }
+    
+    pub fn find_export(&self,export_name: impl ToString) -> Result<u64,ExpError>
+    {
+        unsafe {
+            if !self.has_exports()
+            {
+                return Err(ExpError::ExportError(
+                    "PE64Runtime has no exports".to_string(),
+                ));
+            }
+            
+            let name_table = (self.module_base + (*self.export_dir).address_of_names as u64) as *const u32;
+            
+    
+            let ordinal_table = (self.module_base + (*self.export_dir).address_of_name_ordinals as u64) as *const u16;
+            let func_table = (self.module_base + (*self.export_dir).address_of_functions as u64) as *const u32;
+            
+            
+            let target_name = export_name.to_string();
+            
+            
+            for i in 0..(*self.export_dir).number_of_names
+            {
+                let name_rva = *name_table.add(i as usize);  
+                let func_name_ptr = (self.module_base + name_rva as u64) as *const c_char;
+
+    
+                // strcmpi equivalent
+                let func_name = {
+                    let mut len = 0;
+                    while *func_name_ptr.add(len) != 0 {
+                        len += 1;
+                    }
+                    let slice = core::slice::from_raw_parts(
+                        func_name_ptr as *const u8,
+                        len,
+                    );
+                    core::str::from_utf8_unchecked(slice)
+                };
+    
+                if func_name.eq_ignore_ascii_case(&export_name.to_string()) {
+                    let ordinal = *ordinal_table.add(i as usize) as usize;
+    
+                    let func_rva = *func_table.add(ordinal) as usize;
+                    return Ok(self.module_base + func_rva as u64);
+                }
+            }
+            Err(ExpError::ExportError(format!(
+                "Export not found: {}",
+                target_name
+            )))
+        }
+    }
+}
 pub fn find_dll_base(dll_name: impl ToString) -> Result<u64, ExpError> {
     unsafe {
         let teb = get_teb();
@@ -94,51 +155,3 @@ pub fn find_dll_base(dll_name: impl ToString) -> Result<u64, ExpError> {
     )))
 }
 
-pub fn find_dll_export(export_name: impl ToString, dll_base: u64) -> Result<u64, ExpError> {
-    unsafe {
-        // Read the DLL PE header and NT header
-
-        let dos = dll_base as *const ImageDosHeader;
-        let nt = (dll_base + (*dos).nt_headers_offset() as u64) as *const ImageNtHeaders64;
-
-        let export_rva = (*nt).optional_header.data_directory[0].virtual_address;
-        if export_rva == 0 {
-            return Err(ExpError::ExportError(
-                "Failed to resolve export due to missing RVA".to_string(),
-            ));
-        }
-
-        let export_dir = (dll_base + export_rva as u64) as *mut ImageExportDirectory;
-
-        let name_table = (dll_base + (*export_dir).address_of_names as u64) as *const u32;
-
-        let ordinal_table =
-            (dll_base + (*export_dir).address_of_name_ordinals as u64) as *const u16;
-
-        let func_table = (dll_base + (*export_dir).address_of_functions as u64) as *const u32;
-
-        for i in 0..(*export_dir).number_of_names {
-            let name_rva = *name_table.add(i as usize);
-            let func_name_ptr = (dll_base + name_rva as u64) as *const c_char;
-
-            // strcmpi equivalent
-            let func_name = {
-                let mut len = 0;
-                while *func_name_ptr.add(len) != 0 {
-                    len += 1;
-                }
-                let slice = core::slice::from_raw_parts(func_name_ptr as *const u8, len);
-                core::str::from_utf8_unchecked(slice)
-            };
-
-            if func_name.eq_ignore_ascii_case(&export_name.to_string()) {
-                let ordinal = *ordinal_table.add(i as usize) as usize;
-
-                let func_rva = *func_table.add(ordinal) as usize;
-                return Ok(dll_base + func_rva as u64);
-            }
-        }
-
-        Err(ExpError::ExportError("Failed to find export".to_string()))
-    }
-}
