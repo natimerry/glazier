@@ -1,11 +1,12 @@
-use std::ffi::c_char;
 use crate::ExpError;
+use crate::pe::export_address_table::ImageExportDirectory;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
+use std::ffi::c_char;
 use windows_sys::Win32::System::Threading::TEB;
 use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
-use crate::pe::export_address_table::ImageExportDirectory;
 
+#[macro_export]
 macro_rules! containing_record {
     ($ptr:expr, $container:ty, $field:ident) => {{
         let offset = core::mem::offset_of!($container, $field);
@@ -27,10 +28,9 @@ unsafe fn get_teb() -> *mut TEB {
     teb
 }
 
-
 #[cfg(target_arch = "x86_64")]
 #[inline(always)]
-unsafe fn get_teb() -> *mut TEB {
+pub unsafe fn get_teb() -> *mut TEB {
     unsafe {
         let teb: *mut TEB;
         core::arch::asm!(
@@ -41,7 +41,6 @@ unsafe fn get_teb() -> *mut TEB {
         teb
     }
 }
-
 
 pub fn find_dll_base(dll_name: impl ToString) -> Result<u64, ExpError> {
     unsafe {
@@ -116,7 +115,7 @@ pub fn find_dll_export(export_name: impl ToString, dll_base: u64) -> Result<u64,
         let ordinal_table =
             (dll_base + (*export_dir).address_of_name_ordinals as u64) as *const u16;
 
-        let func_table  = (dll_base + (*export_dir).address_of_functions as u64) as *const u32;
+        let func_table = (dll_base + (*export_dir).address_of_functions as u64) as *const u32;
 
         for i in 0..(*export_dir).number_of_names {
             let name_rva = *name_table.add(i as usize);
@@ -128,10 +127,7 @@ pub fn find_dll_export(export_name: impl ToString, dll_base: u64) -> Result<u64,
                 while *func_name_ptr.add(len) != 0 {
                     len += 1;
                 }
-                let slice = core::slice::from_raw_parts(
-                    func_name_ptr as *const u8,
-                    len,
-                );
+                let slice = core::slice::from_raw_parts(func_name_ptr as *const u8, len);
                 core::str::from_utf8_unchecked(slice)
             };
 
@@ -142,7 +138,6 @@ pub fn find_dll_export(export_name: impl ToString, dll_base: u64) -> Result<u64,
                 return Ok(dll_base + func_rva as u64);
             }
         }
-
 
         Err(ExpError::ExportError("Failed to find export".to_string()))
     }
