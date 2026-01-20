@@ -8,19 +8,18 @@ pub mod utils;
 pub use pe::pe64_static::*;
 
 #[derive(Error, Debug)]
-pub enum ExpError{
+pub enum ExpError {
     #[error("I/O error: {0}")]
     IOError(#[from] std::io::Error),
-    
-    
+
     #[error("Parse error: {0}")]
     ParseError(String),
-    
+
     #[error("Export Error: {0}")]
     ExportError(String),
 }
 
-pub trait  ByteReader{
+pub trait ByteReader {
     fn read_u8(&mut self) -> Result<u8, ExpError>;
     fn read_u32(&mut self) -> Result<u32, ExpError>;
     fn read_u64(&mut self) -> Result<u64, ExpError>;

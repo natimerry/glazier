@@ -1,6 +1,7 @@
+use crate::ByteReader;
+use crate::ExpError;
 use crate::pe::PESection;
 use crate::pe::pe64_static::PE64Static;
-use crate::{ByteReader, ExpError};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]

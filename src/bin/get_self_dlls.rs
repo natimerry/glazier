@@ -16,7 +16,8 @@ fn main() {
 
     let load_library_addr = kernel32
         .find_export("LoadLibraryW")
-        .expect("Failed to find LoadLibraryW").func_addr as usize;
+        .expect("Failed to find LoadLibraryW")
+        .func_addr as usize;
 
     let load_library: LoadLibraryWFn = unsafe { core::mem::transmute(load_library_addr) };
 
@@ -31,7 +32,8 @@ fn main() {
 
     let message_box_addr = user32
         .find_export("MessageBoxW")
-        .expect("Failed to find MessageBoxW").func_addr as usize;
+        .expect("Failed to find MessageBoxW")
+        .func_addr as usize;
 
     let message_box: MessageBoxWFn = unsafe { core::mem::transmute(message_box_addr) };
 

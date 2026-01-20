@@ -6,8 +6,8 @@ pub struct ImageImportDescriptor {
     pub original_first_thunk: u32, // RVA to Import Lookup Table (ILT)
     pub time_date_stamp: u32,
     pub forwarder_chain: u32,
-    pub name: u32,                 // RVA to DLL Name string
-    pub first_thunk: u32,          // RVA to Import Address Table (IAT)
+    pub name: u32,        // RVA to DLL Name string
+    pub first_thunk: u32, // RVA to Import Address Table (IAT)
 }
 
 impl PESection for ImageImportDescriptor {
@@ -19,7 +19,7 @@ impl PESection for ImageImportDescriptor {
 #[derive(Debug, Clone)]
 pub struct ParsedImportModule {
     pub name: String,
-    pub descriptor: ImageImportDescriptor, 
+    pub descriptor: ImageImportDescriptor,
     pub functions: Vec<ParsedImportFunction>,
 }
 
@@ -27,5 +27,6 @@ pub struct ParsedImportModule {
 pub struct ParsedImportFunction {
     pub name: Option<String>, // Function name (e.g. "WriteFile")
     pub ordinal: u16,         // Ordinal if imported by ordinal
-    pub iat_rva: u32,         // The RVA in the IAT where the address is stored (FirstThunk + offset)
+    pub iat_rva: u32,         /* The RVA in the IAT where the address is stored (FirstThunk +
+                               * offset) */
 }

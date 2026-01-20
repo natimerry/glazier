@@ -1,8 +1,7 @@
 use crate::pe::PESection;
 
 #[repr(C)]
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct ImageDosHeader {
     pub e_magic: u16,
     e_cblp: u16,
@@ -26,7 +25,6 @@ pub struct ImageDosHeader {
 }
 
 pub const IMAGE_DOS_SIGNATURE: u16 = 0x5A4D; // 'MZ'
-
 
 impl PESection for ImageDosHeader {
     fn is_valid(&self) -> bool {

@@ -1,16 +1,19 @@
-use byteorder::LittleEndian;
-
+use crate::ByteReader;
+use crate::ExpError;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::pe::import_address_table::{
-    ImageImportDescriptor, ParsedImportFunction, ParsedImportModule,
-};
+use crate::pe::import_address_table::ImageImportDescriptor;
+use crate::pe::import_address_table::ParsedImportFunction;
+use crate::pe::import_address_table::ParsedImportModule;
 use crate::utils::cast_from_mem;
-use crate::{ByteReader, ExpError};
+use byteorder::LittleEndian;
 use std::fs::File;
 use std::io;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::BufReader;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 
 pub struct PE64Static {
     pub image_dos_header: ImageDosHeader,

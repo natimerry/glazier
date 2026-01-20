@@ -1,9 +1,8 @@
-
-use std::mem;
-
-use windows_sys::Win32::System::Threading::TEB;
+use crate::ExpError;
 use crate::ExpError::ParseError;
-use crate::{ExpError, pe::PESection};
+use crate::pe::PESection;
+use std::mem;
+use windows_sys::Win32::System::Threading::TEB;
 
 #[macro_export]
 macro_rules! containing_record {
@@ -13,8 +12,8 @@ macro_rules! containing_record {
     }};
 }
 
-///NOTE: this library doesnt aim to be compatible with aarch64, this is put if for one very specific usecase
-/// and may be removed in future builds
+/// NOTE: this library doesnt aim to be compatible with aarch64, this is put if
+/// for one very specific usecase and may be removed in future builds
 #[cfg(target_arch = "aarch64")]
 #[cfg(feature = "runtime")]
 #[inline(always)]

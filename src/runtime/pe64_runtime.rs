@@ -1,15 +1,13 @@
-use windows_sys::Win32::System::{Threading::TEB, WindowsProgramming::LDR_DATA_TABLE_ENTRY};
-
-use crate::{
-    ExpError, containing_record,
-    pe::{
-        export_address_table::ImageExportDirectory,
-        image_dos_header::ImageDosHeader,
-        image_nt_header::{IMAGE_DIRECTORY_ENTRY_EXPORT, ImageNtHeaders64},
-        image_section_header::ImageSectionHeader,
-    },
-    utils::get_teb,
-};
+use crate::ExpError;
+use crate::containing_record;
+use crate::pe::export_address_table::ImageExportDirectory;
+use crate::pe::image_dos_header::ImageDosHeader;
+use crate::pe::image_nt_header::IMAGE_DIRECTORY_ENTRY_EXPORT;
+use crate::pe::image_nt_header::ImageNtHeaders64;
+use crate::pe::image_section_header::ImageSectionHeader;
+use crate::utils::get_teb;
+use windows_sys::Win32::System::Threading::TEB;
+use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
 
 pub struct PE64Runtime {
     pub teb: *mut TEB,

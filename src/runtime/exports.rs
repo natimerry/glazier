@@ -1,10 +1,13 @@
-use crate::pe::export_address_table::{
-    ImageExportDirectory, ParsedExportFunction, ParsedExportModule,
-};
+use crate::ByteReader;
+use crate::ExpError;
+use crate::PE64Static;
+use crate::pe::export_address_table::ImageExportDirectory;
+use crate::pe::export_address_table::ParsedExportFunction;
+use crate::pe::export_address_table::ParsedExportModule;
 use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::utils::cast_from_mem;
-use crate::{ByteReader, ExpError, PE64Static};
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::LittleEndian;
+use byteorder::ReadBytesExt;
 use std::ffi::c_char;
 
 impl PE64Runtime {
@@ -199,7 +202,8 @@ impl PE64Static {
             });
         }
 
-        // We loop over the NAME table, which points to strings and gives us an index into the func table.
+        // We loop over the NAME table, which points to strings and gives us an index
+        // into the func table.
         for i in 0..descriptor.number_of_names {
             let name_ptr_offset = name_table_offset as u64 + (i as u64 * 4);
             reader.seek(name_ptr_offset as usize)?;
