@@ -27,20 +27,8 @@ unsafe fn get_teb() -> *mut TEB {
     teb
 }
 
-#[cfg(feature = "runtime")]
-#[cfg(target_arch = "x86_64")]
-#[inline(always)]
-pub unsafe fn get_teb() -> *mut TEB {
-    unsafe {
-        let teb: *mut TEB;
-        core::arch::asm!(
-        "mov {}, gs:[0x30]",
-        out(reg) teb,
-        options(nostack, preserves_flags)
-        );
-        teb
-    }
-}
+include!(concat!(env!("OUT_DIR"), "/teb_asm.rs"));
+
 pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(
     reader: &mut R,
 ) -> Result<T, ExpError> {
