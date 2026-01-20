@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 pub mod pe;
+#[cfg(feature = "runtime")]
 pub mod runtime;
 
 pub use pe::pe64_static::*;
