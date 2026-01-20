@@ -27,12 +27,8 @@ pub struct ImageDosHeader {
 pub const IMAGE_DOS_SIGNATURE: u16 = 0x5A4D; // 'MZ'
 
 impl PESection for ImageDosHeader {
-    fn is_valid(&self) -> bool {
-        self.e_magic == IMAGE_DOS_SIGNATURE
-    }
+    fn is_valid(&self) -> bool { self.e_magic == IMAGE_DOS_SIGNATURE }
 }
 impl ImageDosHeader {
-    pub fn nt_headers_offset(&self) -> u32 {
-        self.e_lfanew
-    }
+    pub fn nt_headers_offset(&self) -> u32 { self.e_lfanew }
 }

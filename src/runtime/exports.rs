@@ -78,9 +78,7 @@ pub struct RuntimeParsedExportIterator<'a> {
 }
 
 impl<'a> RuntimeParsedExportIterator<'a> {
-    pub fn new(runtime: &'a PE64Runtime) -> Self {
-        Self { runtime, index: 0 }
-    }
+    pub fn new(runtime: &'a PE64Runtime) -> Self { Self { runtime, index: 0 } }
 }
 
 impl<'a> Iterator for RuntimeParsedExportIterator<'a> {

@@ -22,9 +22,7 @@ pub struct PE64Static {
 }
 
 impl ByteReader for BufReader<File> {
-    fn read_u8(&mut self) -> Result<u8, ExpError> {
-        Ok(byteorder::ReadBytesExt::read_u8(self)?)
-    }
+    fn read_u8(&mut self) -> Result<u8, ExpError> { Ok(byteorder::ReadBytesExt::read_u8(self)?) }
 
     fn read_u32(&mut self) -> Result<u32, ExpError> {
         Ok(byteorder::ReadBytesExt::read_u32::<LittleEndian>(self)?)
@@ -34,9 +32,7 @@ impl ByteReader for BufReader<File> {
         Ok(byteorder::ReadBytesExt::read_u64::<LittleEndian>(self)?)
     }
 
-    fn read_i8(&mut self) -> Result<i8, ExpError> {
-        Ok(byteorder::ReadBytesExt::read_i8(self)?)
-    }
+    fn read_i8(&mut self) -> Result<i8, ExpError> { Ok(byteorder::ReadBytesExt::read_i8(self)?) }
 
     fn read_i16(&mut self) -> Result<i16, ExpError> {
         Ok(byteorder::ReadBytesExt::read_i16::<LittleEndian>(self)?)

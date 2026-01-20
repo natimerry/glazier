@@ -9,9 +9,7 @@ pub struct ImageNtHeaders64 {
 }
 
 impl PESection for ImageNtHeaders64 {
-    fn is_valid(&self) -> bool {
-        self.signature == 0x00004550
-    }
+    fn is_valid(&self) -> bool { self.signature == 0x00004550 }
 }
 
 #[repr(C)]
@@ -69,9 +67,7 @@ pub struct ImageOptionalHeader64 {
 }
 
 impl PESection for ImageOptionalHeader64 {
-    fn is_valid(&self) -> bool {
-        self.magic == 0x20B
-    }
+    fn is_valid(&self) -> bool { self.magic == 0x20B }
 }
 
 #[repr(C)]
@@ -82,9 +78,7 @@ pub struct ImageDataDirectory {
 }
 
 impl PESection for ImageDataDirectory {
-    fn is_valid(&self) -> bool {
-        true
-    }
+    fn is_valid(&self) -> bool { true }
 }
 
 /// Index for the Export Directory in the PE DataDirectory array.
