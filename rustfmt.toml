@@ -5,3 +5,6 @@ reorder_modules = true
 normalize_comments = true
 comment_width = 80
 wrap_comments = true
+use_field_init_shorthand = true
+fn_single_line = true
+type_punctuation_density = "Wide"
