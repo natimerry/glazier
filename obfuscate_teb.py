@@ -187,7 +187,7 @@ if __name__ == "__main__":
                 print(f'        "{line}",')
 
         print("        out=out(reg) teb,")
-        print("        options(nostack, pure, nomem)")
+        print("        options(nostack, volatile)")
         print("    );")
         print('assert!(teb as usize != 0, "TEB pointer xis null");')
         print("    teb")
