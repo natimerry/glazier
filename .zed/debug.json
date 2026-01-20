@@ -1,0 +1,29 @@
+// Project-local debug tasks
+//
+// For more documentation on how to configure debug tasks,
+// see: https://zed.dev/docs/debugger
+
+[
+  {
+    "label": "Read PE file",
+    "adapter": "CodeLLDB",
+    "build": {
+      "command": "cargo",
+      "args": ["build", "--bin", "read_pe_file"],
+    },
+    "sourceLanguages": ["rust"],
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/target/debug/read_pe_file.exe",
+    "args": ["C:\\Windows\\explorer.exe"],
+  },
+
+  {
+    "label": "get_self_dlls",
+    "adapter": "CodeLLDB",
+    "build": {
+      "command": "cargo",
+      "args": ["build", "--bin", "get_self_dlls"],
+    },
+    "sourceLanguages": ["rust"],
+  },
+]
