@@ -55,7 +55,5 @@ fn read_coff_string<R: ByteReader>(
 }
 
 impl PESection for ImageSectionHeader {
-    fn is_valid(&self) -> bool {
-        true
-    }
+    fn is_valid(&self) -> bool { true }
 }

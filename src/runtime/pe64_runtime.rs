@@ -158,9 +158,7 @@ impl PE64Runtime {
     }
 
     #[inline]
-    pub fn rva_to_va(&self, rva: u32) -> u64 {
-        self.module_base + rva as u64
-    }
+    pub fn rva_to_va(&self, rva: u32) -> u64 { self.module_base + rva as u64 }
 
     #[inline]
     pub fn va_to_rva(&self, va: u64) -> Option<u32> {
@@ -172,7 +170,5 @@ impl PE64Runtime {
     }
 
     #[inline]
-    pub fn has_exports(&self) -> bool {
-        !self.export_dir.is_null()
-    }
+    pub fn has_exports(&self) -> bool { !self.export_dir.is_null() }
 }

@@ -11,9 +11,7 @@ pub struct ImageImportDescriptor {
 }
 
 impl PESection for ImageImportDescriptor {
-    fn is_valid(&self) -> bool {
-        true
-    }
+    fn is_valid(&self) -> bool { true }
 }
 
 #[derive(Debug, Clone)]
