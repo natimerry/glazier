@@ -1,8 +1,8 @@
+use libwinexploit::pe::pe64_static::PE64Static;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::process;
-use libwinexploit::pe::pe64_static::PE64Static;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -22,27 +22,40 @@ fn main() {
             // Print Key Info
             println!("DOS Magic:       0x{:04X}", pe.image_dos_header.e_magic);
             println!("PE Signature:    0x{:08X}", pe.image_nt_headers64.signature);
-            println!("Machine:         0x{:04X} (AMD64)", pe.image_nt_headers64.file_header.machine);
-            println!("Entry Point:     0x{:08X}", pe.image_nt_headers64.optional_header.address_of_entry_point);
-            println!("Image Base:      0x{:016X}", pe.image_nt_headers64.optional_header.image_base);
+            println!(
+                "Machine:         0x{:04X} (AMD64)",
+                pe.image_nt_headers64.file_header.machine
+            );
+            println!(
+                "Entry Point:     0x{:08X}",
+                pe.image_nt_headers64.optional_header.address_of_entry_point
+            );
+            println!(
+                "Image Base:      0x{:016X}",
+                pe.image_nt_headers64.optional_header.image_base
+            );
             println!("Sections:        {}", pe.sections.len());
 
             println!("\n[+] Section Table");
             println!("---------------------------------------------------------------");
-            println!("{:<10} | {:<12} | {:<12} | {:<12}", "Name", "Virt Size", "Virt Addr", "Raw Offset");
+            println!(
+                "{:<10} | {:<12} | {:<12} | {:<12}",
+                "Name", "Virt Size", "Virt Addr", "Raw Offset"
+            );
             println!("---------------------------------------------------------------");
 
             let file = File::open(filename).unwrap();
             let mut reader = BufReader::new(file);
 
             for section in &pe.sections {
-                let name = section.resolve_section_name(&pe,&mut reader);
+                let name = section.resolve_section_name(&pe, &mut reader);
 
-                println!("{:<10} | 0x{:<10X} | 0x{:<10X} | 0x{:<10X}",
-                         name,
-                         section.virtual_size,
-                         section.virtual_address,
-                         section.pointer_to_raw_data
+                println!(
+                    "{:<10} | 0x{:<10X} | 0x{:<10X} | 0x{:<10X}",
+                    name,
+                    section.virtual_size,
+                    section.virtual_address,
+                    section.pointer_to_raw_data
                 );
             }
 
@@ -56,7 +69,11 @@ fn main() {
                 for func in module.functions {
                     match &func.name {
                         Some(n) => println!("  - {} (Patch Address: 0x{:X})", n, func.iat_rva),
-                        None => println!("  - Ordinal #{} (Patch Address: 0x{:X})", func.ordinal, pe.rva_to_offset(func.iat_rva).unwrap()),
+                        None => println!(
+                            "  - Ordinal #{} (Patch Address: 0x{:X})",
+                            func.ordinal,
+                            pe.rva_to_offset(func.iat_rva).unwrap()
+                        ),
                     }
                 }
             }
@@ -69,21 +86,35 @@ fn main() {
                 println!("DLL (EXPORT): {}", export.name);
                 for func in export.functions {
                     match &func.name {
-                        Some(n) => println!("  - {} (Dyn Patch Address: 0x{:X} | Byte Offset: 0x{:X})", n, func.func_rva, pe.rva_to_offset(func.func_rva as u32).unwrap()),
-                        None => println!("  - Ordinal #{} (Dyn Patch Address: 0x{:X} Local Patch Address: 0x{:X})", func.ordinal, func.func_rva, pe.rva_to_offset(func.func_rva as u32).unwrap()),
+                        Some(n) => println!(
+                            "  - {} (Dyn Patch Address: 0x{:X} | Byte Offset: 0x{:X})",
+                            n,
+                            func.func_rva,
+                            pe.rva_to_offset(func.func_rva as u32).unwrap()
+                        ),
+                        None => println!(
+                            "  - Ordinal #{} (Dyn Patch Address: 0x{:X} Local Patch Address: 0x{:X})",
+                            func.ordinal,
+                            func.func_rva,
+                            pe.rva_to_offset(func.func_rva as u32).unwrap()
+                        ),
                     }
                 }
             }
 
-            println!("Total Imports: {}", pe.get_parsed_imports(&mut reader).unwrap().len());
-            println!("Total Exports: {}", pe.get_parsed_exports(&mut reader).unwrap().len());
-
-        },
+            println!(
+                "Total Imports: {}",
+                pe.get_parsed_imports(&mut reader).unwrap().len()
+            );
+            println!(
+                "Total Exports: {}",
+                pe.get_parsed_exports(&mut reader).unwrap().len()
+            );
+        }
         Err(e) => {
             eprintln!("\n[!] Fatal Error: Failed to parse PE file.");
             eprintln!("    Reason: {:?}", e);
             process::exit(1);
         }
-
     }
 }

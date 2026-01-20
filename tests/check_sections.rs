@@ -1,10 +1,7 @@
-
-use std::{
-    fs::File,
-    io::BufReader,
-    path::PathBuf,
-};
 use libwinexploit::PE64Static;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::PathBuf;
 
 const SAMPLE_EXE: &str = "app_custom_section_with_imports.exe";
 const SAMPLE_C: &str = "tests/samples/app_custom_section_with_imports.c";
@@ -27,13 +24,10 @@ fn load_pe() -> Result<(PE64Static, BufReader<File>), String> {
         ));
     }
 
-    let pe = PE64Static::from_pe_file(
-        path.to_str().ok_or("invalid UTF-8 path")?
-    )
+    let pe = PE64Static::from_pe_file(path.to_str().ok_or("invalid UTF-8 path")?)
         .map_err(|e| format!("failed to parse PE: {e:?}"))?;
 
-    let file = File::open(&path)
-        .map_err(|e| format!("failed to open sample binary: {e}"))?;
+    let file = File::open(&path).map_err(|e| format!("failed to open sample binary: {e}"))?;
 
     Ok((pe, BufReader::new(file)))
 }
@@ -42,9 +36,10 @@ fn load_pe() -> Result<(PE64Static, BufReader<File>), String> {
 fn test_custom_section_parsing() -> Result<(), String> {
     let (pe, mut reader) = load_pe()?;
 
-    let found = pe.sections.iter().any(|s| {
-        s.resolve_section_name(&pe, &mut reader) == ".test_section"
-    });
+    let found = pe
+        .sections
+        .iter()
+        .any(|s| s.resolve_section_name(&pe, &mut reader) == ".test_section");
 
     if !found {
         return Err("custom section `.test_section` not found".into());
@@ -61,9 +56,9 @@ fn test_imports_messagebox() -> Result<(), String> {
         .get_parsed_imports(&mut reader)
         .map_err(|e| format!("failed to parse imports: {e:?}"))?;
 
-    let has_user32 = imports.iter().any(|m| {
-        m.name.eq_ignore_ascii_case("user32.dll")
-    });
+    let has_user32 = imports
+        .iter()
+        .any(|m| m.name.eq_ignore_ascii_case("user32.dll"));
 
     if !has_user32 {
         return Err("User32.dll import not found (MessageBoxA)".into());

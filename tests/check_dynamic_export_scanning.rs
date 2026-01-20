@@ -1,4 +1,5 @@
-use libwinexploit::runtime::exports::{find_dll_base, find_dll_export};
+use libwinexploit::runtime::exports::find_dll_base;
+use libwinexploit::runtime::exports::find_dll_export;
 use windows_sys::w;
 
 type LoadLibraryWFn = unsafe extern "system" fn(*const u16) -> *mut core::ffi::c_void;

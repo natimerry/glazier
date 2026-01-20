@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use libwinexploit::PE64Static;
+use std::path::PathBuf;
 
 fn get_sample_path(filename: &str) -> PathBuf {
     let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -13,11 +13,11 @@ fn test_dos_header() -> Result<(), String> {
     let sample = get_sample_path("app_custom_section_with_imports.exe");
 
     if !sample.exists() {
-        return Err(
-            "Sample file does not exist, \
+        return Err("Sample file does not exist, \
              gcc tests/samples/app_custom_section_with_imports.c \
-                 -o tests/samples/app_custom_section_with_imports.exe".parse().unwrap(),
-        );
+                 -o tests/samples/app_custom_section_with_imports.exe"
+            .parse()
+            .unwrap());
     }
 
     let pe = PE64Static::from_pe_file(sample.to_str().unwrap())
@@ -33,7 +33,6 @@ fn test_dos_header() -> Result<(), String> {
 
     Ok(())
 }
-
 
 #[test]
 fn test_rva_resolution() -> Result<(), String> {
@@ -53,9 +52,9 @@ fn test_rva_resolution() -> Result<(), String> {
     let pe = PE64Static::from_pe_file(
         sample
             .to_str()
-            .ok_or("invalid UTF-8 path for test sample")?
+            .ok_or("invalid UTF-8 path for test sample")?,
     )
-        .map_err(|e| format!("failed to parse PE: {e:?}"))?;
+    .map_err(|e| format!("failed to parse PE: {e:?}"))?;
 
     let entry_rva = pe.image_nt_headers64.optional_header.address_of_entry_point;
     let offset = pe.rva_to_offset(entry_rva);

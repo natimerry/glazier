@@ -7,12 +7,12 @@ pub struct ImageExportDirectory {
     pub time_date_stamp: u32,
     pub major_version: u16,
     pub minor_version: u16,
-    pub name: u32,                   // RVA to the DLL internal name string
-    pub base: u32,                   // The starting ordinal number
-    pub number_of_functions: u32,    // Count of entries in AddressOfFunctions
-    pub number_of_names: u32,        // Count of entries in AddressOfNames
-    pub address_of_functions: u32,   // RVA to Export Address Table (EAT)
-    pub address_of_names: u32,       // RVA to Export Name Pointer Table
+    pub name: u32,                     // RVA to the DLL internal name string
+    pub base: u32,                     // The starting ordinal number
+    pub number_of_functions: u32,      // Count of entries in AddressOfFunctions
+    pub number_of_names: u32,          // Count of entries in AddressOfNames
+    pub address_of_functions: u32,     // RVA to Export Address Table (EAT)
+    pub address_of_names: u32,         // RVA to Export Name Pointer Table
     pub address_of_name_ordinals: u32, // RVA to Export Ordinal Table
 }
 
@@ -33,8 +33,8 @@ pub struct ParsedExportModule {
 #[derive(Debug, Clone)]
 pub struct ParsedExportFunction {
     pub func_addr: usize,
-    pub name: Option<String>,      // Function name (None if exported by ordinal only)
-    pub ordinal: u32,              // The final ordinal (Base + Index)
-    pub func_rva: u32,             // The RVA pointing to the code (or forwarder string)
+    pub name: Option<String>, // Function name (None if exported by ordinal only)
+    pub ordinal: u32,         // The final ordinal (Base + Index)
+    pub func_rva: u32,        // The RVA pointing to the code (or forwarder string)
     pub forwarder: Option<String>, // If set, 'rva' points to this string (e.g. "NTDLL.SomeFunc")
 }

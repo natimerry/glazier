@@ -1,0 +1,7 @@
+imports_granularity = "Item"
+group_imports = "One"
+reorder_imports = true
+reorder_modules = true
+normalize_comments = true
+comment_width = 80
+wrap_comments = true
