@@ -28,4 +28,4 @@ incremental = false
 rpath = false
 
 [build-dependencies]
-mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0", commit = "ec12965df326b44b546a65754f0338b76656c160" }
+mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0", }
