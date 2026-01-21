@@ -29,8 +29,7 @@ pub unsafe fn get_teb() -> *mut TEB {{
     let a: isize = 100;
     let b: isize = 83;
     let c: isize = 7;
-    use std::hint::black_box;
-    unsafe {{ black_box(crate::utils::readqgsword(std::hint::black_box(({}) as usize))) as *mut TEB }}
+    unsafe {{ std::hint::black_box(crate::utils::readqgsword(std::hint::black_box(({}) as usize))) as *mut TEB }}
 }}
 "#,
                 obfuscated
