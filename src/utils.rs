@@ -27,6 +27,9 @@ unsafe fn get_teb() -> *mut TEB {
     teb
 }
 
+#[cfg(target_arch = "x86_64")]
+#[cfg(feature = "runtime")]
+#[inline(always)]
 unsafe fn readqgsword(offset: usize) -> u64 {
     let result: u64;
     unsafe {
@@ -38,7 +41,7 @@ unsafe fn readqgsword(offset: usize) -> u64 {
     }
     result
 }
-
+#[cfg(feature = "obfuscation")]
 include!(concat!(env!("OUT_DIR"), "/teb_asm.rs"));
 
 pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(

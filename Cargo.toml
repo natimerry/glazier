@@ -13,7 +13,7 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_WindowsProgramming
 [features]
 default = ["runtime","obfuscation"]
 runtime = []
-obfuscation = ["dep:obfstr"]
+obfuscation = ["dep:obfstr","dep:mfa"]
 
 
 [profile.release]
@@ -28,4 +28,4 @@ incremental = false
 rpath = false
 
 [build-dependencies]
-mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0", }
+mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0", optional = true }
