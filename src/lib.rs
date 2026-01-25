@@ -16,6 +16,26 @@ pub enum ExpError {
 
     #[error("Export Error: {0}")]
     ExportError(String),
+
+    #[cfg(feature = "runtime")]
+    #[error("Failed to open process: {0}")]
+    OpenProcessError(u32),
+
+    #[cfg(feature = "runtime")]
+    #[error("Runtime error: {0}")]
+    RuntimeError(String),
+
+    #[cfg(feature = "runtime")]
+    #[error("CreateToolhelp32Snapshot error")]
+    CreateToolhelp32SnapshotError(),
+
+    #[cfg(feature = "runtime")]
+    #[error("Process not found error")]
+    ProcessNotFoundError(String),
+
+    #[cfg(feature = "runtime")]
+    #[error("Process32Next error")]
+    Process32NextError(),
 }
 
 pub trait ByteReader {
@@ -36,4 +56,17 @@ pub trait ByteReader {
     fn seek(&mut self, offset: usize) -> Result<u64, ExpError>;
 
     fn current_offset(&mut self) -> Result<usize, ExpError>;
+}
+
+
+// Wrapped bindings (works for both modes)
+#[allow(
+    non_snake_case,
+    non_camel_case_types,
+    dead_code,
+    non_upper_case_globals,
+    warnings
+)]
+pub mod winapi {
+    include!(concat!(env!("OUT_DIR"), "/winapi_bindings.rs"));
 }

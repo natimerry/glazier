@@ -41,7 +41,6 @@ unsafe fn readqgsword(offset: usize) -> u64 {
     }
     result
 }
-#[cfg(feature = "obfuscation")]
 include!(concat!(env!("OUT_DIR"), "/teb_asm.rs"));
 
 pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(
