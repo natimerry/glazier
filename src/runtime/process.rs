@@ -1,15 +1,10 @@
 use crate::ExpError;
-use windows_sys::Win32::Foundation::CloseHandle;
-use windows_sys::Win32::Foundation::HWND;
+use crate::winapi::*;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::CreateToolhelp32Snapshot;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::PROCESSENTRY32;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::Process32First;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::Process32Next;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
 
 pub struct Process {
-    pub handle: HWND,
+    pub handle: HANDLE,
     pub name: String,
     pub window_name: Option<String>,
     pub path: Option<String>,
@@ -17,7 +12,7 @@ pub struct Process {
 
 impl Process {
     pub fn from_pid(pid: u32, access: u32) -> Result<Self, ExpError> {
-        let handle = unsafe { windows_sys::Win32::System::Threading::OpenProcess(access, 0, pid) };
+        let handle = unsafe { OpenProcess(access, 0, pid) };
 
         if handle.is_null() {
             return Err(ExpError::OpenProcessError(pid));
@@ -25,9 +20,9 @@ impl Process {
 
         let mut buffer = vec![0u8; 260]; // MAX_PATH
         let len = unsafe {
-            windows_sys::Win32::System::ProcessStatus::GetProcessImageFileNameA(
+            GetProcessImageFileNameA(
                 handle,
-                buffer.as_mut_ptr(),
+                buffer.as_mut_ptr() as *mut i8, // Cast to *mut i8
                 buffer.len() as u32,
             )
         };
@@ -38,15 +33,14 @@ impl Process {
             String::new()
         };
 
-        let text_len =
-            unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextLengthA(handle) };
+        let text_len = unsafe { GetWindowTextLengthA(handle as HWND) };
 
         let window_name = if text_len > 0 {
             let mut text_buffer = vec![0u8; (text_len + 1) as usize];
             let actual_len = unsafe {
-                windows_sys::Win32::UI::WindowsAndMessaging::GetWindowTextA(
-                    handle,
-                    text_buffer.as_mut_ptr(),
+                GetWindowTextA(
+                    handle as HWND,
+                    text_buffer.as_mut_ptr() as *mut i8, // Cast to *mut i8
                     text_buffer.len() as i32,
                 )
             };
@@ -72,7 +66,8 @@ impl Process {
         let mut pids: Vec<u32> = Vec::new();
 
         let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-        if snapshot == INVALID_HANDLE_VALUE {
+
+        if snapshot == INVALID_HANDLE_VALUE || snapshot.is_null() {
             return Err(ExpError::CreateToolhelp32SnapshotError());
         }
 
@@ -86,6 +81,8 @@ impl Process {
             return Err(ExpError::OpenProcessError(0));
         }
 
+        let target_name = name.to_string();
+
         loop {
             let exe_name = unsafe {
                 let len = pe32
@@ -96,13 +93,13 @@ impl Process {
                 String::from_utf8_lossy(
                     &(pe32.szExeFile[..len])
                         .iter()
-                        .map(|x| *x as u8)
+                        .map(|&c| c as u8)
                         .collect::<Vec<u8>>(),
                 )
                 .to_string()
             };
 
-            if exe_name.eq_ignore_ascii_case(&name.to_string()) {
+            if exe_name.eq_ignore_ascii_case(&target_name) {
                 pids.push(pe32.th32ProcessID);
             }
 
@@ -114,7 +111,7 @@ impl Process {
         unsafe { CloseHandle(snapshot) };
 
         if pids.is_empty() {
-            Err(ExpError::ProcessNotFoundError(name.to_string()))
+            Err(ExpError::ProcessNotFoundError(target_name))
         } else {
             Ok(pids)
         }
