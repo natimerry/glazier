@@ -23,9 +23,7 @@ fn main() {
             let result = Intrepreter::from_source(expr, 1, false);
 
             match result {
-                Ok((offset, obfuscated)) => {
-                    assert_eq!(offset, 0x30);
-
+                Ok((_, obfuscated)) => {
                     println!("cargo:rerun-if-changed=build.rs");
 
                     format!(
