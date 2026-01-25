@@ -58,29 +58,14 @@ pub trait ByteReader {
     fn current_offset(&mut self) -> Result<usize, ExpError>;
 }
 
-#[cfg(not(feature = "obfuscation"))]
-#[allow(
-    non_snake_case,
-    non_camel_case_types,
-    dead_code,
-    non_upper_case_globals
-)]
-mod raw {
-    #![allow(
-        non_snake_case,
-        non_camel_case_types,
-        dead_code,
-        non_upper_case_globals
-    )]
-    include!(concat!(env!("OUT_DIR"), "/raw_bindings.rs"));
-}
 
 // Wrapped bindings (works for both modes)
 #[allow(
     non_snake_case,
     non_camel_case_types,
     dead_code,
-    non_upper_case_globals
+    non_upper_case_globals,
+    warnings
 )]
 pub mod winapi {
     include!(concat!(env!("OUT_DIR"), "/winapi_bindings.rs"));
