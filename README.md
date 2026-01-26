@@ -33,6 +33,8 @@ Instead of static linking like the `windows-sys` crate, this feature enables **f
 
 This technique avoids leaving static import traces and makes API usage harder to detect through static analysis.
 
+**HOWEVER BINDGEN DOES NOT PORT CONSTANTS AND OTHER DEFINES LIKE `MB_OK`,`PAGE_READWRITE` and stuff like that. So you might still want a crate that gives you the constants for better ergon**
+
 #### Direct Syscalls (`hells_gate` feature)
 For maximum stealth when calling NT-level functions:
 
