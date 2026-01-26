@@ -11,17 +11,17 @@ An experimental Rust framework for Windows binary analysis and manipulation with
 
 ### Current Features
 
-#### PE Binary Analysis
+## PE Binary Analysis
 - Parse and analyze PE (Portable Executable) file structures
 - Extract and enumerate import/export tables
 - Inspect section headers and metadata
 
-#### Process Interaction
+### Process Interaction
 - Open and interact with running processes
 - Read process memory and structures
 - Query process information
 
-#### Dynamic API Resolution (`obfuscation` feature)
+### Dynamic API Resolution (`obfuscation` feature)
 Instead of static linking like the `windows-sys` crate, this feature enables **fully dynamic API resolution at runtime**:
 
 - Automatically generates type-safe Rust bindings for WinAPI and NT functions
@@ -35,7 +35,7 @@ This technique avoids leaving static import traces and makes API usage harder to
 
 **HOWEVER BINDGEN DOES NOT PORT CONSTANTS AND OTHER DEFINES LIKE `MB_OK`,`PAGE_READWRITE` and stuff like that. So you might still want a crate that gives you the constants for better ergon**
 
-#### Direct Syscalls (`hells_gate` feature)
+### Direct Syscalls (`hells_gate` feature)
 For maximum stealth when calling NT-level functions:
 
 - Provides `*HellsGate` function variants for `Nt*` and `Zw*` APIs
