@@ -58,7 +58,6 @@ pub trait ByteReader {
     fn current_offset(&mut self) -> Result<usize, ExpError>;
 }
 
-
 // Wrapped bindings (works for both modes)
 #[allow(
     non_snake_case,
@@ -69,4 +68,130 @@ pub trait ByteReader {
 )]
 pub mod winapi {
     include!(concat!(env!("OUT_DIR"), "/winapi_bindings.rs"));
+}
+
+#[inline(always)]
+pub unsafe fn to_syscall_arg<T>(val: T) -> usize {
+    let size = std::mem::size_of::<T>();
+    if size == 8 {
+       unsafe { std::mem::transmute_copy(&val) }
+    } else if size == 4 {
+        let val_u32: u32 = unsafe {std::mem::transmute_copy(&val)};
+        val_u32 as usize
+    } else if size == 2 {
+        let val_u16: u16 = unsafe { std::mem::transmute_copy(&val) };
+        val_u16 as usize
+    } else if size == 1 {
+        let val_u8: u8 = unsafe { std::mem::transmute_copy(&val) };
+        val_u8 as usize
+    } else {
+        unsafe { std::mem::transmute_copy(&val) }
+    }
+}
+
+#[macro_export]
+macro_rules! syscall {
+    // 0 Arguments
+    ($ssn:expr) => {{
+        let status: i32;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("eax") ($ssn) as u32,
+                lateout("eax") status,
+                out("rcx") _,
+                out("r11") _,
+                options(nostack, preserves_flags)
+            );
+        }
+        status
+    }};
+
+    // 1 Argument
+    ($ssn:expr, $a1:expr) => {{
+        let status: i32;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("eax") ($ssn) as u32,
+                in("r10") $crate::to_syscall_arg($a1),
+                lateout("eax") status,
+                out("rcx") _,
+                out("r11") _,
+                options(nostack, preserves_flags)
+            );
+        }
+        status
+    }};
+
+    // 2 Arguments
+    ($ssn:expr, $a1:expr, $a2:expr) => {{
+        let status: i32;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("eax") ($ssn) as u32,
+                in("r10") $crate::to_syscall_arg($a1),
+                in("rdx") $crate::to_syscall_arg($a2),
+                lateout("eax") status,
+                out("rcx") _,
+                out("r11") _,
+                options(nostack, preserves_flags)
+            );
+        }
+        status
+    }};
+
+    // 3 Arguments
+    ($ssn:expr, $a1:expr, $a2:expr, $a3:expr) => {{
+        let status: i32;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("eax") ($ssn) as u32,
+                in("r10") $crate::to_syscall_arg($a1),
+                in("rdx") $crate::to_syscall_arg($a2),
+                in("r8")  $crate::to_syscall_arg($a3),
+                lateout("eax") status,
+                out("rcx") _,
+                out("r11") _,
+                options(nostack, preserves_flags)
+            );
+        }
+        status
+    }};
+
+    // 4 Arguments
+    ($ssn:expr, $a1:expr, $a2:expr, $a3:expr, $a4:expr) => {{
+        let status: i32;
+        unsafe {
+            core::arch::asm!(
+                "syscall",
+                in("eax") ($ssn) as u32,
+                in("r10") $crate::to_syscall_arg($a1),
+                in("rdx") $crate::to_syscall_arg($a2),
+                in("r8")  $crate::to_syscall_arg($a3),
+                in("r9")  $crate::to_syscall_arg($a4),
+                lateout("eax") status,
+                out("rcx") _,
+                out("r11") _,
+                options(nostack, preserves_flags)
+            );
+        }
+        status
+    }};
+
+    // 5+ Arguments (Uses Assembly Thunk)
+    ($ssn:expr, $a1:expr, $a2:expr, $a3:expr, $a4:expr, $($rest:expr),+) => {{
+        unsafe {
+            $crate::utils::do_syscall(
+                ($ssn),
+                $crate::to_syscall_arg($a1),
+                $crate::to_syscall_arg($a2),
+                $crate::to_syscall_arg($a3),
+                $crate::to_syscall_arg($a4),
+                $($crate::to_syscall_arg($rest)),*
+            )
+        }
+    }};
 }

@@ -15,6 +15,43 @@ impl PE64Runtime {
         RuntimeParsedExportIterator::new(self)
     }
 
+    pub fn get_syscall_num(&self, exported_func: ParsedExportFunction) -> Result<u16, ExpError> {
+        let func_addr = exported_func.func_addr as *const u8;
+
+        if let Some(func_name) = &exported_func.name {
+            if !(func_name.starts_with("Nt") || func_name.starts_with("Zw")) {
+                println!("Function is not a syscall, are you sure you know what you are doing?");
+            }
+        }
+
+        unsafe {
+            // mov r10, rcx
+            if *func_addr == 0x4C
+                && *func_addr.add(1) == 0x8B
+                && *func_addr.add(2) == 0xD1
+                && *func_addr.add(3) == 0xB8
+            {
+                let ssn_low = *func_addr.add(4);
+                let ssn_high = *func_addr.add(5);
+
+                let ssn = ((ssn_high as u16) << 8) | (ssn_low as u16);
+                return Ok(ssn);
+            }
+
+            if *func_addr == 0xE9 {
+                return Err(ExpError::ExportError(format!(
+                    "Function {} is hooked (starts with JMP). Hell's Gate extraction failed.",
+                    exported_func.name.unwrap().to_string()
+                )));
+            }
+
+            Err(ExpError::ExportError(format!(
+                "Pattern mismatch for {}. Could not identify syscall stub.",
+                exported_func.name.unwrap().to_string()
+            )))
+        }
+    }
+
     pub fn find_export(
         &self,
         export_name: impl ToString,

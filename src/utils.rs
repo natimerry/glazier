@@ -1,6 +1,7 @@
 use crate::ExpError;
 use crate::ExpError::ParseError;
 use crate::pe::PESection;
+use std::arch::global_asm;
 use std::mem;
 use windows_sys::Win32::System::Threading::TEB;
 
@@ -58,4 +59,44 @@ pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(
 
         Ok(header.clone())
     }
+}
+global_asm!(
+    r#"
+    .section .text
+    .global do_syscall
+    .def do_syscall
+        .scl 2
+        .type 32
+    .endef
+
+do_syscall:
+    # Save shadow space (Windows x64 ABI)
+    mov [rsp + 8], rcx
+    mov [rsp + 16], rdx
+    mov [rsp + 24], r8
+    mov [rsp + 32], r9
+
+    # Map arguments for syscall
+    mov eax, ecx        # SSN -> EAX
+    mov r10, rdx        # Arg1 -> R10
+    mov rdx, r8         # Arg2
+    mov r8,  r9         # Arg3
+    mov r9,  [rsp + 40] # Arg4
+
+    # Shift stack args (SSN added as arg0)
+    mov rcx, [rsp + 48]
+    mov [rsp + 40], rcx
+
+    mov rcx, [rsp + 56]
+    mov [rsp + 48], rcx
+
+    syscall
+    ret
+    "#
+);
+
+unsafe extern "C" {
+    // We shift arguments by 1 because SSN is the first arg
+    pub fn do_syscall(ssn: u16, ...) -> i32;
+
 }

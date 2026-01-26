@@ -11,10 +11,10 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHe
 
 
 [features]
-default = ["runtime"]
+default = ["runtime","obfuscation","hells_gate"]
+obfuscation = ["dep:obfstr","runtime"]
 runtime = []
-obfuscation = ["dep:obfstr"]
-
+hells_gate = []
 
 [profile.release]
 opt-level = "z"

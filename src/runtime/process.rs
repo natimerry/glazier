@@ -84,7 +84,7 @@ impl Process {
         let target_name = name.to_string();
 
         loop {
-            let exe_name = unsafe {
+            let exe_name = {
                 let len = pe32
                     .szExeFile
                     .iter()
