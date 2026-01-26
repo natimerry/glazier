@@ -2,3 +2,4 @@
 /.idea
 /tests/samples/*.exe
 /*.log
+/build.log
