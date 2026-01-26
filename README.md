@@ -53,7 +53,6 @@ For maximum stealth when calling NT-level functions:
 ## Usage Example
 
 ```rust
-use libwinexploit::prelude::*;
 
 // With obfuscation feature: dynamically resolves CreateFileW at runtime
 #[cfg(feature = "obfuscation")]
