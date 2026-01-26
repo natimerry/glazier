@@ -13,6 +13,7 @@ macro_rules! log {
 
             if let Ok(mut file) = OpenOptions::new()
                 .create(true)
+                .append(true)
                 .open("build.log") {
                 let _ = writeln!(file, "{}", msg);
                 let _ = file.flush();
@@ -89,17 +90,20 @@ fn generate_winapi_bindings(out_dir: &str) {
             r#"
             #define WIN32_LEAN_AND_MEAN
             #define NOMINMAX
-            #define _WIN32_WINNT 0x0A00
+            #define _WIN32_WINNT 0x0A00   // Windows 10+ (OK for 11)
 
-            #include <windows.h>
+            #define PHNT_MODE PHNT_MODE_USER
+            #define PHNT_VERSION PHNT_WINDOWS_11
+
+            #include <phnt_windows.h>
+            #include <phnt.h>
+
             #include <tlhelp32.h>
             #include <psapi.h>
             #include <winuser.h>
-            #include <aclapi.h>
-            #include <bcrypt.h>
-            #include <ncrypt.h>
             "#,
         )
+        .clang_arg(format!("-I./phnt"))
         .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um")
         .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared")
         .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt")
@@ -334,6 +338,111 @@ fn generate_wrapper(output: &mut File, func: &syn::ForeignItemFn) -> std::io::Re
         )?;
     }
 
+    #[cfg(feature = "hells_gate")]
+    if func_name.starts_with("Nt") || func_name.starts_with("Zw") {
+        let alias_name = format!("{}HellsGate", &func_name);
+        generate_single_wrapper_hells_gate(
+            output,
+            &alias_name,
+            Some(&func_name), // Use K32 name as the real function
+            &args_decl_str,
+            &return_annotation,
+            &arg_names_str,
+            &fn_type_args_str,
+            &return_type_str,
+            dll,
+        )?;
+    }
+
+    Ok(())
+}
+fn generate_single_wrapper_hells_gate(
+    output: &mut File,
+    name: &str,
+    real_func_name: Option<&str>,
+    args_decl_str: &str,
+    return_annotation: &str,
+    arg_names_str: &str,
+    _fn_type_args_str: &str, // Unused in Hell's Gate but kept for API compatibility
+    return_type_str: &str,
+    dll: &str,
+) -> std::io::Result<()> {
+    let target_func = real_func_name.unwrap_or(name);
+
+    // Normal version (No change - still calls standard API)
+    writeln!(output, "#[cfg(not(feature = \"obfuscation\"))]")?;
+    writeln!(output, "#[inline]")?;
+    writeln!(
+        output,
+        "pub unsafe fn {}({}) {} {{",
+        name, args_decl_str, return_annotation
+    )?;
+    writeln!(
+        output,
+        "    unsafe {{ raw::{}({}) }} ",
+        target_func, arg_names_str
+    )?;
+    writeln!(output, "}}")?;
+    writeln!(output)?;
+
+    // Hell's Gate version
+    writeln!(output, "#[cfg(feature = \"obfuscation\")]")?;
+    writeln!(
+        output,
+        "pub unsafe fn {}({}) {} {{",
+        name, args_decl_str, return_annotation
+    )?;
+
+    // We don't need FnType for syscalls, we just need the SSN
+    writeln!(output)?;
+    writeln!(output, "    static mut SSN: u16 = 0;")?;
+    writeln!(
+        output,
+        "    static INIT: std::sync::Once = std::sync::Once::new();"
+    )?;
+    writeln!(output)?;
+    writeln!(output, "    INIT.call_once(|| {{")?;
+
+    // Only works for NTDLL, but we keep 'dll' variable for flexibility if needed
+    // In practice, Hell's Gate is strictly for "NTDLL.DLL"
+    writeln!(
+        output,
+        "        if let Ok(module) = PE64Runtime::from_module(\"{}\") {{",
+        dll
+    )?;
+    writeln!(
+        output,
+        "            if let Ok(export) = module.find_export(\"{}\") {{",
+        target_func
+    )?;
+    writeln!(
+        output,
+        "                if let Ok(s) = module.get_syscall_num(export) {{"
+    )?;
+    writeln!(output, "                    unsafe {{ SSN = s; }}")?;
+    writeln!(output, "                }}")?;
+    writeln!(output, "            }}")?;
+    writeln!(output, "        }}")?;
+    writeln!(output, "    }});")?;
+    writeln!(output)?;
+
+    // Invocation via the syscall! macro
+    // We explicitly cast the result to the expected return type
+    let invocation_args = if arg_names_str.trim().is_empty() {
+        String::new()
+    } else {
+        format!(", {}", arg_names_str) // format args as: arg1, arg2
+    };
+
+    writeln!(
+        output,
+        // Remove the hardcoded comma after SSN used in the template
+        "    crate::syscall!(unsafe {{ SSN }}{}) as {}",
+        invocation_args, return_type_str
+    )?;
+    writeln!(output, "}}")?;
+    writeln!(output)?;
+
     Ok(())
 }
 
@@ -555,7 +664,9 @@ fn type_to_string(ty: &syn::Type) -> String {
 fn guess_dll(func_name: &str) -> &'static str {
     let name_lower = func_name.to_lowercase();
 
-    if name_lower.contains("process")
+    if name_lower.starts_with("zw") || name_lower.starts_with("nt") {
+        "NTDLL.DLL"
+    } else if name_lower.contains("process")
         || name_lower.contains("thread")
         || name_lower.contains("library")
         || name_lower.contains("module")
