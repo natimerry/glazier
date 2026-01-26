@@ -77,7 +77,7 @@ git submodule update --init --recursive
 
 ## AI Usage Disclaimer
 
-This project uses LLMs to accelerate repetitive tasks like generating docstrings, porting C struct definitions to Rust, and formatting CLI output. **Core logic, memory abstractions, API resolution mechanisms, and syscall handling are manually implemented and not AI-generated.**
+This project uses LLMs to accelerate repetitive tasks like generating docstrings, porting C struct definitions to Rust, and formatting CLI output and porting some of the `bins/` to proper `tests`. **Core logic and anything which is NOT print formatting or stupid boilerplate reimplementation of existing code are manually implemented and not AI-generated.**
 
 ## Roadmap
 
