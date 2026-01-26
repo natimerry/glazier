@@ -1,6 +1,6 @@
 use libwinexploit::winapi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
-
+use libwinexploit::utils::to_wide;
 fn main() {
     unsafe {
         let user32_name = to_wide("User32.dll");
@@ -21,5 +21,3 @@ fn main() {
         );
     }
 }
-
-fn to_wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() }

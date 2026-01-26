@@ -178,10 +178,13 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
 
     // Re-export common types
     writeln!(output, "pub use raw::*;").unwrap();
+
     writeln!(output).unwrap();
 
     writeln!(output, "#[cfg(feature = \"obfuscation\")]").unwrap();
     writeln!(output, "use crate::runtime::pe64_runtime::PE64Runtime;").unwrap();
+    writeln!(output, "use crate::utils::to_wide;").unwrap();
+
     writeln!(output).unwrap();
 
     // Count functions
@@ -495,6 +498,14 @@ fn generate_single_wrapper(
     )?;
     writeln!(output)?;
     writeln!(output, "    INIT.call_once(|| {{")?;
+
+    if !(dll.to_uppercase() == "KERNEL32.DLL") {
+        writeln!(
+            output,
+            "        let _ = LoadLibraryW((to_wide(\"{}\")).as_ptr());",
+            { dll }
+        )?;
+    }
     writeln!(
         output,
         "        if let Ok(module) = PE64Runtime::from_module(\"{}\") {{",
