@@ -2,6 +2,8 @@ use libwinexploit::runtime::pe64_runtime::PE64Runtime;
 use windows_sys::w;
 
 fn main() {
+    env_logger::init();
+    
     type LoadLibraryWFn = unsafe extern "system" fn(name: *const u16) -> *mut core::ffi::c_void;
 
     type MessageBoxWFn = unsafe extern "system" fn(

@@ -8,6 +8,7 @@ use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::utils::cast_from_mem;
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
+use log::{debug,warn};
 use std::ffi::c_char;
 
 impl PE64Runtime {
@@ -20,7 +21,7 @@ impl PE64Runtime {
 
         if let Some(func_name) = &exported_func.name {
             if !(func_name.starts_with("Nt") || func_name.starts_with("Zw")) {
-                println!("Function is not a syscall, are you sure you know what you are doing?");
+                warn!("Function is not a syscall, are you sure you know what you are doing?");
             }
         }
 
@@ -39,7 +40,7 @@ impl PE64Runtime {
             }
             let func_name = exported_func.name.clone().unwrap();
             if *func_addr == 0xE9 {
-                eprintln!(
+                warn!(
                     "Function {} is hooked (JMP detected). Scanning forward...",
                     func_name.clone().to_string()
                 );
@@ -71,17 +72,17 @@ impl PE64Runtime {
             .position(|(name, _)| name == target_func)
             .ok_or_else(|| ExpError::ExportError(format!("Function {} not found", target_func)))?;
 
-        eprintln!("Target {} at index {}", target_func, target_idx);
+        debug!("Target {} at index {}", target_func, target_idx);
 
         for offset in 1..=20 {
             if let Some((neighbor_name, neighbor_addr)) = syscall_funcs.get(target_idx + offset) {
                 if let Ok(neighbor_ssn) = self.try_extract_ssn(*neighbor_addr) {
                     let calculated_ssn = neighbor_ssn - offset as u16;
-                    eprintln!(
+                    debug!(
                         "Found unhooked neighbor {} (+{}) with SSN 0x{:X}",
                         neighbor_name, offset, neighbor_ssn
                     );
-                    eprintln!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
+                    debug!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
                     return Ok(calculated_ssn);
                 }
             }
@@ -92,11 +93,11 @@ impl PE64Runtime {
                 {
                     if let Ok(neighbor_ssn) = self.try_extract_ssn(*neighbor_addr) {
                         let calculated_ssn = neighbor_ssn + offset as u16;
-                        eprintln!(
+                        debug!(
                             "Found unhooked neighbor {} (-{}) with SSN 0x{:X}",
                             neighbor_name, offset, neighbor_ssn
                         );
-                        eprintln!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
+                        debug!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
                         return Ok(calculated_ssn);
                     }
                 }

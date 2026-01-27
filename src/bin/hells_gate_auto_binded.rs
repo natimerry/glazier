@@ -9,6 +9,8 @@ const MEM_RESERVE: u32 = 0x2000;
 const PAGE_READWRITE: u32 = 0x04;
 
 fn main() {
+    env_logger::init();
+    
     let process_handle: HANDLE = -1isize as HANDLE;
 
     let mut base_address: PVOID = ptr::null_mut(); // Let the OS choose the address

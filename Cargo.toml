@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 byteorder = "1.5.0"
+env_logger = "0.11.8"
+log = "0.4.29"
 obfstr = {version= "0.4.4", optional = true}
 thiserror = "2.0.17"
 windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHelp","Win32_System_Threading","Win32_System_ProcessStatus","Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Data", "Win32_System_LibraryLoader", "Win32_System_Kernel"] }

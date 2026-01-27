@@ -6,6 +6,8 @@ const MEM_RESERVE: usize = 0x2000;
 const PAGE_READWRITE: usize = 0x04;
 
 pub fn main() {
+    env_logger::init();
+
     let ntdll = PE64Runtime::from_module("NTDLL.DLL").expect("Failed to find ntdll.dll");
 
     let target_func = ntdll
