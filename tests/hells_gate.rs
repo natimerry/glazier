@@ -122,10 +122,9 @@ mod hellsgate_tests {
             func_ptr.unwrap()
         );
 
-        // Try different SSN values around 0x5B
         for test_ssn in 0x50..=0x65 {
             let mut time = unsafe {
-                let mut t = std::mem::MaybeUninit::<libwinexploit::winapi::LARGE_INTEGER>::zeroed();
+                let t = std::mem::MaybeUninit::<libwinexploit::winapi::LARGE_INTEGER>::zeroed();
                 t.assume_init()
             };
 

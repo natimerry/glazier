@@ -1,11 +1,9 @@
 use env_logger::Env;
-use env_logger::Target;
 use libwinexploit::runtime::pe64_runtime::PE64Runtime;
 use libwinexploit::syscall;
 use libwinexploit::winapi::LARGE_INTEGER;
 use log::error;
 use log::info;
-use std::io::Write;
 pub fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("debug"))
         // .target(Target::Stdout) // Log to stdout instead of stderr
