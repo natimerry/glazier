@@ -373,7 +373,7 @@ fn generate_single_wrapper_hells_gate(
     let target_func = real_func_name.unwrap_or(name);
 
     // Normal version (No change - still calls standard API)
-    writeln!(output, "#[cfg(not(feature = \"obfuscation\"))]")?;
+    writeln!(output, "#[cfg(not(feature = \"hells_gate\"))]")?;
     writeln!(output, "#[inline]")?;
     writeln!(
         output,
@@ -389,7 +389,7 @@ fn generate_single_wrapper_hells_gate(
     writeln!(output)?;
 
     // Hell's Gate version
-    writeln!(output, "#[cfg(feature = \"obfuscation\")]")?;
+    writeln!(output, "#[cfg(feature = \"hells_gate\")]")?;
     writeln!(
         output,
         "pub unsafe fn {}({}) {} {{",

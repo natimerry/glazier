@@ -24,6 +24,7 @@ impl PE64Runtime {
             }
         }
 
+        // TODO: Implement syscall extraction for hooked function with a loop (and maybe implement max tries to avoid segfaults)
         unsafe {
             // mov r10, rcx
             if *func_addr == 0x4C
