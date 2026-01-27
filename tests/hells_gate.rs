@@ -1,6 +1,5 @@
 #[cfg(all(test, windows))]
 mod syscall_tests {
-    use super::*;
     use libwinexploit::runtime::pe64_runtime::PE64Runtime;
     use libwinexploit::syscall;
 
@@ -62,7 +61,11 @@ mod syscall_tests {
 
 #[cfg(all(test, windows))]
 mod hellsgate_tests {
+    use libwinexploit::syscall;
+    use libwinexploit::winapi::GetModuleHandleA;
+    use libwinexploit::winapi::GetProcAddress;
     use libwinexploit::winapi::HANDLE;
+    use libwinexploit::winapi::LARGE_INTEGER;
     use libwinexploit::winapi::NTSTATUS;
     use libwinexploit::winapi::NtAllocateVirtualMemoryHellsGate;
     use libwinexploit::winapi::PVOID;
@@ -104,6 +107,116 @@ mod hellsgate_tests {
             for i in 0..16 {
                 assert_eq!(*ptr.add(i), i as u8);
             }
+        }
+    }
+
+    #[test]
+    fn verify_ntquerysystemtime_ssn() {
+        // Call the regular NtQuerySystemTime and trace it
+        let ntdll = unsafe { GetModuleHandleA(b"ntdll.dll\0".as_ptr() as *const i8) };
+        let func_ptr =
+            unsafe { GetProcAddress(ntdll, b"NtQuerySystemTime\0".as_ptr() as *const i8) };
+
+        println!(
+            "NtQuerySystemTime function pointer: {:p}",
+            func_ptr.unwrap()
+        );
+
+        // Try different SSN values around 0x5B
+        for test_ssn in 0x50..=0x65 {
+            let mut time = unsafe {
+                let mut t = std::mem::MaybeUninit::<libwinexploit::winapi::LARGE_INTEGER>::zeroed();
+                t.assume_init()
+            };
+
+            let status = syscall!(test_ssn, &mut time as *mut LARGE_INTEGER);
+
+            if status == 0 {
+                unsafe {
+                    if time.QuadPart > 0 {
+                        println!("SSN 0x{:X} works! Time: {}", test_ssn, time.QuadPart);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(all(test, windows))]
+mod hellsgate_arity_tests {
+    use libwinexploit::winapi::*;
+    use std::ptr;
+
+    const STATUS_SUCCESS: i32 = 0;
+    const STATUS_NO_YIELD_PERFORMED: i32 = 0x40000024_u32 as i32;
+
+    #[test]
+    fn hellsgate_0_args_ntyieldexecution() {
+        let status = unsafe { NtYieldExecutionHellsGate() };
+        // Accept either success or no-yield (both are valid)
+        assert!(
+            status == STATUS_SUCCESS || status == STATUS_NO_YIELD_PERFORMED,
+            "Unexpected status: 0x{:X}",
+            status as u32
+        );
+    }
+
+    #[test]
+    fn hellsgate_1_arg_ntclose() {
+        let status = unsafe { NtCloseHellsGate(ptr::null_mut()) };
+        assert_ne!(status, 0);
+    }
+
+    #[test]
+    fn hellsgate_1_arg_ntquerydefaultuilanguage() {
+        let mut lang_id: u16 = 0;
+
+        let status = unsafe { NtQueryDefaultUILanguageHellsGate(&mut lang_id) };
+
+        assert_eq!(status, STATUS_SUCCESS, "Status: 0x{:X}", status as u32);
+        assert_ne!(lang_id, 0, "Language ID should be non-zero");
+        println!("Default UI Language: 0x{:X}", lang_id);
+    }
+
+    #[test]
+    fn hellsgate_1_arg_ntquerysystemtime() {
+        let mut time = unsafe {
+            let t = std::mem::MaybeUninit::<LARGE_INTEGER>::zeroed();
+            t.assume_init()
+        };
+
+        let status = unsafe { NtQuerySystemTimeHellsGate(&mut time) };
+
+        assert_eq!(status, STATUS_SUCCESS, "Status: 0x{:X}", status as u32);
+
+        unsafe {
+            assert!(time.QuadPart > 0, "Time value should be positive");
+            println!("NtQuerySystemTime succeeded! Time: {}", time.QuadPart);
+        }
+    }
+
+    #[test]
+    fn hellsgate_3_args_ntdelayexecution() {
+        let mut interval = LARGE_INTEGER { QuadPart: -10_000 };
+
+        let status = unsafe { NtDelayExecutionHellsGate(0, &mut interval as *mut _) };
+
+        assert_eq!(status, STATUS_SUCCESS, "Status: 0x{:X}", status as u32);
+    }
+
+    #[test]
+    fn hellsgate_4_args_ntqueryperformancecounter() {
+        let mut counter = LARGE_INTEGER { QuadPart: 0 };
+        let mut freq = LARGE_INTEGER { QuadPart: 0 };
+
+        let status = unsafe {
+            NtQueryPerformanceCounterHellsGate(&mut counter as *mut _, &mut freq as *mut _)
+        };
+
+        assert_eq!(status, STATUS_SUCCESS, "Status: 0x{:X}", status as u32);
+        unsafe {
+            assert!(counter.QuadPart > 0);
+            assert!(freq.QuadPart > 0);
         }
     }
 }

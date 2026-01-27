@@ -24,7 +24,6 @@ impl PE64Runtime {
             }
         }
 
-        // TODO: Implement syscall extraction for hooked function with a loop (and maybe implement max tries to avoid segfaults)
         unsafe {
             // mov r10, rcx
             if *func_addr == 0x4C
@@ -38,12 +37,13 @@ impl PE64Runtime {
                 let ssn = ((ssn_high as u16) << 8) | (ssn_low as u16);
                 return Ok(ssn);
             }
-
+            let func_name = exported_func.name.clone().unwrap();
             if *func_addr == 0xE9 {
-                return Err(ExpError::ExportError(format!(
-                    "Function {} is hooked (starts with JMP). Hell's Gate extraction failed.",
-                    exported_func.name.unwrap().to_string()
-                )));
+                eprintln!(
+                    "Function {} is hooked (JMP detected). Scanning forward...",
+                    func_name.clone().to_string()
+                );
+                return self.halos_gate(&func_name);
             }
 
             Err(ExpError::ExportError(format!(
@@ -53,6 +53,76 @@ impl PE64Runtime {
         }
     }
 
+    fn halos_gate(&self, target_func: &str) -> Result<u16, ExpError> {
+        let mut syscall_funcs: Vec<(String, usize)> = Vec::new();
+        let iterator = RuntimeParsedExportIterator::new(&self);
+
+        for export in iterator {
+            let name_str = export.name.clone();
+            if name_str.starts_with("Nt") || name_str.starts_with("Zw") {
+                syscall_funcs.push((name_str, export.address as usize));
+            }
+        }
+
+        syscall_funcs.sort_by_key(|(_, addr)| *addr);
+
+        let target_idx = syscall_funcs
+            .iter()
+            .position(|(name, _)| name == target_func)
+            .ok_or_else(|| ExpError::ExportError(format!("Function {} not found", target_func)))?;
+
+        eprintln!("Target {} at index {}", target_func, target_idx);
+
+        for offset in 1..=20 {
+            if let Some((neighbor_name, neighbor_addr)) = syscall_funcs.get(target_idx + offset) {
+                if let Ok(neighbor_ssn) = self.try_extract_ssn(*neighbor_addr) {
+                    let calculated_ssn = neighbor_ssn - offset as u16;
+                    eprintln!(
+                        "Found unhooked neighbor {} (+{}) with SSN 0x{:X}",
+                        neighbor_name, offset, neighbor_ssn
+                    );
+                    eprintln!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
+                    return Ok(calculated_ssn);
+                }
+            }
+
+            // Try function before target
+            if target_idx >= offset {
+                if let Some((neighbor_name, neighbor_addr)) = syscall_funcs.get(target_idx - offset)
+                {
+                    if let Ok(neighbor_ssn) = self.try_extract_ssn(*neighbor_addr) {
+                        let calculated_ssn = neighbor_ssn + offset as u16;
+                        eprintln!(
+                            "Found unhooked neighbor {} (-{}) with SSN 0x{:X}",
+                            neighbor_name, offset, neighbor_ssn
+                        );
+                        eprintln!("Calculated {} SSN: 0x{:X}", target_func, calculated_ssn);
+                        return Ok(calculated_ssn);
+                    }
+                }
+            }
+        }
+
+        Err(ExpError::ExportError(format!(
+            "Halo's Gate failed: no unhooked neighbors found for {}",
+            target_func
+        )))
+    }
+    fn try_extract_ssn(&self, func_addr: usize) -> Result<u16, ()> {
+        unsafe {
+            let addr = func_addr as *const u8;
+
+            // Check for syscall stub pattern
+            if *addr == 0x4C && *addr.add(1) == 0x8B && *addr.add(2) == 0xD1 && *addr.add(3) == 0xB8
+            {
+                let ssn_low = *addr.add(4);
+                let ssn_high = *addr.add(5);
+                Ok(((ssn_high as u16) << 8) | (ssn_low as u16))
+            } else {
+                Err(())
+            }
+        }
+    }
     pub fn find_export(
         &self,
         export_name: impl ToString,
