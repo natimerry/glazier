@@ -3,11 +3,13 @@ use crate::winapi::*;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
 
+#[derive(Debug)]
 pub struct Process {
     pub handle: HANDLE,
     pub name: String,
     pub window_name: Option<String>,
     pub path: Option<String>,
+    pub pid: u32,
 }
 
 impl Process {
@@ -36,17 +38,20 @@ impl Process {
         let text_len = unsafe { GetWindowTextLengthA(handle as HWND) };
 
         let window_name = if text_len > 0 {
-            let mut text_buffer = vec![0u8; (text_len + 1) as usize];
+            let mut buffer: Vec<u8> = vec![0u8; (text_len + 1) as usize];
+
             let actual_len = unsafe {
                 GetWindowTextA(
                     handle as HWND,
-                    text_buffer.as_mut_ptr() as *mut i8, // Cast to *mut i8
-                    text_buffer.len() as i32,
+                    buffer.as_mut_ptr() as *mut i8,
+                    buffer.len() as i32,
                 )
             };
 
             if actual_len > 0 {
-                Some(String::from_utf8_lossy(&text_buffer[..actual_len as usize]).into_owned())
+                // Use actual_len returned by GetWindowTextA, not text_len
+                // This handles cases where GetWindowTextLengthA overestimates
+                Some(String::from_utf8_lossy(&buffer[..actual_len as usize]).into_owned())
             } else {
                 None
             }
@@ -59,11 +64,12 @@ impl Process {
             name,
             window_name,
             path: None,
+            pid,
         })
     }
 
-    pub fn get_pid_by_names(name: impl ToString) -> Result<Vec<u32>, ExpError> {
-        let mut pids: Vec<u32> = Vec::new();
+    pub fn get_from_name(name: impl ToString, access: DWORD) -> Result<Vec<Process>, ExpError> {
+        let mut pids: Vec<Process> = Vec::new();
 
         let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
 
@@ -100,7 +106,9 @@ impl Process {
             };
 
             if exe_name.eq_ignore_ascii_case(&target_name) {
-                pids.push(pe32.th32ProcessID);
+                pids.push(
+                    Process::from_pid(pe32.th32ProcessID, access).expect("Unable to open process"),
+                );
             }
 
             if unsafe { Process32Next(snapshot, &mut pe32) } == 0 {
