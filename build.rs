@@ -675,39 +675,52 @@ fn type_to_string(ty: &syn::Type) -> String {
 fn guess_dll(func_name: &str) -> &'static str {
     let name_lower = func_name.to_lowercase();
 
+    // Check prefixes first
     if name_lower.starts_with("zw") || name_lower.starts_with("nt") {
-        "NTDLL.DLL"
-    } else if name_lower.contains("process")
-        || name_lower.contains("thread")
-        || name_lower.contains("library")
-        || name_lower.contains("module")
-        || name_lower.contains("toolhelp")
-        || name_lower.contains("heap")
-        || name_lower.contains("virtual")
-        || name_lower.contains("createfile")
-    {
-        "KERNEL32.DLL"
-    } else if name_lower.contains("window")
-        || name_lower.contains("message")
-        || name_lower.contains("dialog")
-        || name_lower.contains("menu")
-        || name_lower.contains("input")
-        || name_lower.contains("foreground")
-    {
-        "USER32.DLL"
-    } else if name_lower.contains("reg")
-        || name_lower.contains("security")
-        || name_lower.contains("service")
-    {
-        "ADVAPI32.DLL"
-    } else if name_lower.contains("gdi")
-        || name_lower.contains("bitmap")
-        || name_lower.contains("brush")
-    {
-        "GDI32.DLL"
-    } else if name_lower.contains("shell") || name_lower.contains("shget") {
-        "SHELL32.DLL"
-    } else {
-        "KERNEL32.DLL"
+        return "NTDLL.DLL";
+    }
+
+    // Match based on keywords
+    match () {
+        _ if name_lower.contains("process")
+            || name_lower.contains("thread")
+            || name_lower.contains("library")
+            || name_lower.contains("module")
+            || name_lower.contains("toolhelp")
+            || name_lower.contains("heap")
+            || name_lower.contains("virtual")
+            || name_lower.contains("createfile") =>
+        {
+            "KERNEL32.DLL"
+        }
+
+        _ if name_lower.contains("window")
+            || name_lower.contains("message")
+            || name_lower.contains("dialog")
+            || name_lower.contains("menu")
+            || name_lower.contains("input")
+            || name_lower.contains("foreground")
+            || name_lower.contains("hook") =>
+        {
+            "USER32.DLL"
+        }
+
+        _ if name_lower.contains("reg")
+            || name_lower.contains("security")
+            || name_lower.contains("service") =>
+        {
+            "ADVAPI32.DLL"
+        }
+
+        _ if name_lower.contains("gdi")
+            || name_lower.contains("bitmap")
+            || name_lower.contains("brush") =>
+        {
+            "GDI32.DLL"
+        }
+
+        _ if name_lower.contains("shell") || name_lower.contains("shget") => "SHELL32.DLL",
+
+        _ => "KERNEL32.DLL",
     }
 }
