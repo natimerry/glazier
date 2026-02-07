@@ -7,6 +7,8 @@ pub mod utils;
 pub use pe::pe64_static::*;
 
 pub mod hooking;
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!("This crate only supports x86_64");
 
 #[derive(Error, Debug)]
 pub enum ExpError {
