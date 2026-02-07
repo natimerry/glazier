@@ -6,6 +6,8 @@ pub mod runtime;
 pub mod utils;
 pub use pe::pe64_static::*;
 
+pub mod hooking;
+
 #[derive(Error, Debug)]
 pub enum ExpError {
     #[error("I/O error: {0}")]
@@ -74,9 +76,9 @@ pub mod winapi {
 pub unsafe fn to_syscall_arg<T>(val: T) -> usize {
     let size = std::mem::size_of::<T>();
     if size == 8 {
-       unsafe { std::mem::transmute_copy(&val) }
+        unsafe { std::mem::transmute_copy(&val) }
     } else if size == 4 {
-        let val_u32: u32 = unsafe {std::mem::transmute_copy(&val)};
+        let val_u32: u32 = unsafe { std::mem::transmute_copy(&val) };
         val_u32 as usize
     } else if size == 2 {
         let val_u16: u16 = unsafe { std::mem::transmute_copy(&val) };
