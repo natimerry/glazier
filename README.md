@@ -82,7 +82,7 @@ This project uses LLMs to accelerate repetitive tasks like generating docstrings
 ## Roadmap
 
 Future development may include:
-- Hooking and function detouring
+- Hooking and function detouring (implementation logic based on existing [minhook](https://github.com/TsudaKageyu/minhook))
 - Pattern scanning (AOB/signature search)
 - Memory manipulation utilities
 - Symbolic execution integration
