@@ -691,13 +691,13 @@ fn guess_dll(func_name: &str) -> &'static str {
         || name_lower.contains("message")
         || name_lower.contains("dialog")
         || name_lower.contains("menu")
+        || name_lower.contains("input")
+        || name_lower.contains("foreground")
     {
         "USER32.DLL"
     } else if name_lower.contains("reg")
         || name_lower.contains("security")
         || name_lower.contains("service")
-        || name_lower.contains("input")
-        || name_lower.contains("foreground")
     {
         "ADVAPI32.DLL"
     } else if name_lower.contains("gdi")
