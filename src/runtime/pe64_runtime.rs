@@ -105,10 +105,6 @@ impl PE64Runtime {
         }
     }
 
-    fn image_size(&mut self) {
-        let image_size = unsafe { (*self.nt_headers).optional_header.size_of_image };
-    }
-
     unsafe fn from_base_address(teb: *mut TEB, module_base: u64) -> Result<Self, ExpError> {
         unsafe {
             let dos_header = module_base as *const ImageDosHeader;
