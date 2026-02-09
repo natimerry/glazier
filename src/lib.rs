@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+
 use thiserror::Error;
 
 pub mod pe;
@@ -40,6 +42,9 @@ pub enum ExpError {
     #[cfg(feature = "runtime")]
     #[error("Process32Next error")]
     Process32NextError(),
+
+    #[error("Invalid pattern error. Use IDA style patterns")]
+    InvalidPatternError,
 }
 
 pub trait ByteReader {
