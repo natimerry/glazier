@@ -29,6 +29,9 @@ pub struct PE64Runtime {
 
     /// Pointer to export directory (if present)
     pub export_dir: *const ImageExportDirectory,
+
+    /// Image size
+    pub image_size: u32,
 }
 
 impl PE64Runtime {
@@ -54,7 +57,6 @@ impl PE64Runtime {
             Self::from_base_address(teb, module_base)
         }
     }
-
 
     pub fn from_module(dll_name: impl ToString) -> Result<Self, ExpError> {
         unsafe {
@@ -103,6 +105,10 @@ impl PE64Runtime {
         }
     }
 
+    fn image_size(&mut self) {
+        let image_size = unsafe { (*self.nt_headers).optional_header.size_of_image };
+    }
+
     unsafe fn from_base_address(teb: *mut TEB, module_base: u64) -> Result<Self, ExpError> {
         unsafe {
             let dos_header = module_base as *const ImageDosHeader;
@@ -124,6 +130,8 @@ impl PE64Runtime {
                 core::ptr::null()
             };
 
+            let image_size = (*nt_headers).optional_header.size_of_image;
+
             Ok(Self {
                 teb,
                 module_base,
@@ -132,6 +140,7 @@ impl PE64Runtime {
                 section_headers,
                 section_count,
                 export_dir,
+                image_size,
             })
         }
     }
