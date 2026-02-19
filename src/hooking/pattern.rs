@@ -22,6 +22,7 @@ impl Pattern {
         for part in parts {
             if part == "?" || part == "??" || part == "*" {
                 bytes.push(0);
+                mask.push(false);
             } else {
                 bytes
                     .push(u8::from_str_radix(part, 16).map_err(|_| ExpError::InvalidPatternError)?);
