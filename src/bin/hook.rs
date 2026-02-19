@@ -8,17 +8,16 @@ use std::ptr::null_mut;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering;
 
-// Store the original function pointer so our detour can call through
 static ORIGINAL_MESSAGEBOX: AtomicPtr<()> = AtomicPtr::new(null_mut());
 
-// Our detour — same signature as MessageBoxW
 unsafe extern "system" fn hooked_message_box(
     hwnd: *mut c_void,
     _text: *const u16,
     _caption: *const u16,
     utype: u32,
 ) -> i32 {
-    println!("In Hook!");
+    println!("[Hook] MessageBoxW intercepted!");
+
     let original: unsafe extern "system" fn(*mut c_void, *const u16, *const u16, u32) -> i32 =
         std::mem::transmute(ORIGINAL_MESSAGEBOX.load(Ordering::SeqCst));
 
@@ -27,69 +26,68 @@ unsafe extern "system" fn hooked_message_box(
 
     original(hwnd, new_text.as_ptr(), new_caption.as_ptr(), utype)
 }
+
 fn to_wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() }
+
+fn call_msgbox(text: &str, caption: &str) {
+    let t = to_wide(text);
+    let c = to_wide(caption);
+    unsafe {
+        MessageBoxW(null_mut(), t.as_ptr(), c.as_ptr(), 0);
+    }
+}
+
+fn dump_bytes(label: &str, ptr: *const u8, len: usize) {
+    print!("{}: ", label);
+    for i in 0..len {
+        print!("{:02X} ", unsafe { *ptr.add(i) });
+    }
+    println!();
+}
 
 fn main() {
     env_logger::init();
 
     unsafe {
-        let user32_name = to_wide("User32.dll");
-        let h_module = LoadLibraryW(user32_name.as_ptr());
-        if h_module.is_null() {
-            panic!("Failed to load User32.dll");
-        }
+        // Load User32 and resolve MessageBoxW
+        let h_module = LoadLibraryW(to_wide("User32.dll").as_ptr());
+        assert!(!h_module.is_null(), "Failed to load User32.dll");
 
-        let func_name = b"MessageBoxW\0";
-        let target_fn = GetProcAddress(h_module, func_name.as_ptr() as *const i8)
+        let target_fn = GetProcAddress(h_module, b"MessageBoxW\0".as_ptr() as *const i8) // ← fixed \0
             .expect("Failed to resolve MessageBoxW");
 
-        // Transmute the fn pointer to a raw *mut u8 for the hooking machinery
         let target: *mut u8 = std::mem::transmute(target_fn);
 
-        println!("MessageBoxW address: {:p}", target);
-        println!("Detour address:      {:p}", hooked_message_box as *mut u8);
+        println!("MessageBoxW (GetProcAddress): {:p}", target);
+        println!(
+            "MessageBoxW (crate import):   {:p}",
+            MessageBoxW as *const ()
+        ); // should match
+        println!(
+            "Detour address:               {:p}",
+            hooked_message_box as *mut u8
+        );
 
+        // Install hook
         let mut original: LPVOID = null_mut();
-        let mut hook = HookEntry::new(
-            target,
-            hooked_message_box as *mut u8,
-            &mut original as *mut LPVOID,
-        )
-        .expect("Failed to create hook");
+        let mut hook = HookEntry::new(target, hooked_message_box as *mut u8, &mut original)
+            .expect("Failed to create hook");
 
         ORIGINAL_MESSAGEBOX.store(original as *mut (), Ordering::SeqCst);
 
-        println!("Trampoline: {:p}", original);
-        let tramp_ptr = original as *const u8;
-        print!("Trampoline bytes: ");
-        unsafe {
-            for i in 0..64 {
-                print!("{:02X} ", *tramp_ptr.add(i));
-            }
-        }
-        println!();
+        dump_bytes("Trampoline bytes (64)", original as *const u8, 64);
+        dump_bytes("MessageBoxW bytes (16)", target as *const u8, 16);
 
-        // Also dump the first 16 bytes of MessageBoxW to see what we're disassembling
-        let target_ptr = target as *const u8;
-        print!("MessageBoxW bytes: ");
-        unsafe {
-            for i in 0..16 {
-                print!("{:02X} ", *target_ptr.add(i));
-            }
-        }
-        println!();
-        // Enable
+        // Enable → hooked call
         hook.toggle().expect("Failed to enable hook");
-        let text = to_wide("Hello from generated bindings!");
-        let caption = to_wide("PE Loader Rust");
-        MessageBoxW(null_mut(), text.as_ptr(), caption.as_ptr(), 0u32); // MB_OK = 0
+        call_msgbox("Hello from Rust!", "PE Loader"); // should show hooked text
 
-        // Disable
+        // Disable → original call
         hook.toggle().expect("Failed to disable hook");
-        MessageBoxW(null_mut(), text.as_ptr(), caption.as_ptr(), 0u32);
+        call_msgbox("Hello from Rust!", "PE Loader"); // should show original text
 
-        // Re-enable
+        // Re-enable → hooked again
         hook.toggle().expect("Failed to re-enable hook");
-        MessageBoxW(null_mut(), text.as_ptr(), caption.as_ptr(), 0u32);
+        call_msgbox("Hello from Rust!", "PE Loader");
     }
 }

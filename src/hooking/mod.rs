@@ -4,12 +4,15 @@ use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
 use crate::winapi::FlushInstructionCache;
 use crate::winapi::GetCurrentProcess;
+use crate::winapi::GetSystemInfo;
 use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
+use crate::winapi::SYSTEM_INFO;
 use crate::winapi::VirtualAlloc;
 use crate::winapi::VirtualProtect;
 use crate::winapi::VirtualQuery;
+use log::trace;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::u8;
@@ -54,6 +57,25 @@ pub enum HookError {
     TrampolineError,
 }
 
+#[repr(C)]
+struct MemorySlot {
+    next: *mut MemorySlot,
+    // trampoline bytes follow
+}
+
+#[repr(C)]
+struct MemoryBlock {
+    next: *mut MemoryBlock,
+    free: *mut MemorySlot,
+    used_count: u32,
+}
+
+const MEMORY_BLOCK_SIZE: usize = 0x10000; // 64KB
+const MEMORY_SLOT_SIZE: usize = 64; // enough for trampoline
+const MAX_MEMORY_RANGE: usize = 0x2000_0000; // 512MB
+
+static mut MEMORY_BLOCKS: *mut MemoryBlock = null_mut();
+
 unsafe fn check_address_executable(address: *mut u8) -> bool {
     let mut mi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
 
@@ -65,38 +87,181 @@ unsafe fn check_address_executable(address: *mut u8) -> bool {
 
     return (mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0);
 }
-unsafe fn alloc_near_buffer(target: *mut u8, size: usize) -> *mut u8 {
-    let mut addr = target as usize;
-    let min_addr = addr.saturating_sub(0x7FFF0000);
-    let max_addr = addr.saturating_add(0x7FFF0000).min(usize::MAX - size);
 
-    // Try above target first
-    let mut candidate = (addr + 0xFFFF) & !0xFFFF; // align to 64k
-    while candidate < max_addr {
-        let result = VirtualAlloc(
-            candidate as LPVOID,
-            size as u64,
-            0x3000, // MEM_COMMIT | MEM_RESERVE
-            0x40,   // PAGE_EXECUTE_READWRITE
-        );
-        if !result.is_null() {
-            return result as *mut u8;
-        }
-        candidate += 0x10000; // step by 64k (VirtualAlloc granularity)
+unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
+    let mut si: SYSTEM_INFO = std::mem::zeroed();
+    GetSystemInfo(&mut si);
+
+    let mut min_addr = si.lpMinimumApplicationAddress as usize;
+    let mut max_addr = si.lpMaximumApplicationAddress as usize;
+
+    let origin = origin as usize;
+
+    if origin > MAX_MEMORY_RANGE && min_addr < origin - MAX_MEMORY_RANGE {
+        min_addr = origin - MAX_MEMORY_RANGE;
     }
 
-    // Try below target
-    let mut candidate = addr.saturating_sub(0xFFFF) & !0xFFFF;
-    while candidate > min_addr {
-        let result = VirtualAlloc(candidate as LPVOID, size as u64, 0x3000, 0x40);
-        if !result.is_null() {
-            return result as *mut u8;
+    if max_addr > origin + MAX_MEMORY_RANGE {
+        max_addr = origin + MAX_MEMORY_RANGE;
+    }
+
+    max_addr -= MEMORY_BLOCK_SIZE - 1;
+
+    // Try existing blocks first
+    let mut block = MEMORY_BLOCKS;
+    while !block.is_null() {
+        let addr = block as usize;
+        if addr >= min_addr && addr < max_addr {
+            if !(*block).free.is_null() {
+                return block;
+            }
         }
-        candidate = candidate.saturating_sub(0x10000);
+        block = (*block).next;
+    }
+
+    // Try allocate new block below origin
+    let mut alloc_addr = origin;
+
+    while alloc_addr >= min_addr {
+        alloc_addr =
+            find_prev_free_region(alloc_addr, min_addr, si.dwAllocationGranularity as usize);
+
+        if alloc_addr == 0 {
+            break;
+        }
+
+        let new_block = VirtualAlloc(
+            alloc_addr as LPVOID,
+            MEMORY_BLOCK_SIZE as u64,
+            0x3000, // MEM_COMMIT | MEM_RESERVE
+            0x40,   // PAGE_EXECUTE_READWRITE
+        ) as *mut MemoryBlock;
+
+        if !new_block.is_null() {
+            initialize_block(new_block);
+            return new_block;
+        }
+    }
+
+    // Try allocate above
+    alloc_addr = origin;
+
+    while alloc_addr <= max_addr {
+        alloc_addr =
+            find_next_free_region(alloc_addr, max_addr, si.dwAllocationGranularity as usize);
+
+        if alloc_addr == 0 {
+            break;
+        }
+
+        let new_block = VirtualAlloc(alloc_addr as LPVOID, MEMORY_BLOCK_SIZE as u64, 0x3000, 0x40)
+            as *mut MemoryBlock;
+
+        if !new_block.is_null() {
+            initialize_block(new_block);
+            return new_block;
+        }
     }
 
     null_mut()
 }
+
+unsafe fn initialize_block(block: *mut MemoryBlock) {
+    (*block).used_count = 0;
+    (*block).free = null_mut();
+
+    let mut slot = (block as *mut u8).add(size_of::<MemoryBlock>()) as *mut MemorySlot;
+
+    let end = (block as usize) + MEMORY_BLOCK_SIZE;
+
+    while (slot as usize) + MEMORY_SLOT_SIZE <= end {
+        (*slot).next = (*block).free;
+        (*block).free = slot;
+        slot = (slot as *mut u8).add(MEMORY_SLOT_SIZE) as *mut MemorySlot;
+    }
+
+    (*block).next = MEMORY_BLOCKS;
+    MEMORY_BLOCKS = block;
+}
+
+unsafe fn find_prev_free_region(mut addr: usize, min: usize, granularity: usize) -> usize {
+    while addr > min {
+        addr = addr.saturating_sub(granularity); // always step back
+
+        let mut mbi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
+        if VirtualQuery(
+            addr as LPVOID,
+            &mut mbi,
+            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+        ) == 0
+        {
+            break;
+        }
+
+        if mbi.State == 0x10000 {
+            let aligned = (mbi.BaseAddress as usize + granularity - 1) & !(granularity - 1);
+            if aligned + MEMORY_BLOCK_SIZE <= mbi.BaseAddress as usize + mbi.RegionSize as usize {
+                return aligned;
+            }
+        }
+
+        // Step back by the region size to avoid re-querying the same region
+        if mbi.RegionSize as usize > granularity {
+            addr = addr.saturating_sub(mbi.RegionSize as usize - granularity);
+        }
+    }
+    0
+}
+
+unsafe fn find_next_free_region(mut addr: usize, max: usize, granularity: usize) -> usize {
+    while addr < max {
+        let mut mbi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
+        if VirtualQuery(
+            addr as LPVOID,
+            &mut mbi,
+            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+        ) == 0
+        {
+            break;
+        }
+
+        let region_size = mbi.RegionSize as usize;
+        if region_size == 0 {
+            break; // guard against zero-size regions looping forever
+        }
+
+        if mbi.State == 0x10000 {
+            let aligned = (mbi.BaseAddress as usize + granularity - 1) & !(granularity - 1);
+            if aligned + MEMORY_BLOCK_SIZE <= mbi.BaseAddress as usize + region_size {
+                return aligned;
+            }
+        }
+
+        addr = mbi.BaseAddress as usize + region_size; // always advance past this region
+    }
+    0
+}
+
+pub unsafe fn allocate_buffer(origin: *mut u8) -> *mut u8 {
+    let block = get_memory_block(origin);
+    if block.is_null() {
+        return null_mut();
+    }
+
+    let slot = (*block).free;
+    if slot.is_null() {
+        return null_mut();
+    }
+
+    (*block).free = (*slot).next;
+    (*block).used_count += 1;
+
+    // Debug fill
+    std::ptr::write_bytes(slot as *mut u8, 0xCC, MEMORY_SLOT_SIZE);
+
+    slot as *mut u8
+}
+
 impl HookEntry {
     pub fn new(target: *mut u8, detour: *mut u8, original: *mut LPVOID) -> Result<Self, HookError> {
         if target.is_null() || detour.is_null() {
@@ -108,7 +273,7 @@ impl HookEntry {
                 return Err(HookError::InvalidPointer);
             }
 
-            let buffer_addr = alloc_near_buffer(target, 64);
+            let buffer_addr = allocate_buffer(target);
             if buffer_addr.is_null() {
                 return Err(HookError::AllocationFailed);
             }
@@ -119,7 +284,7 @@ impl HookEntry {
                 detour: ct.relay,
                 trampoline: ct.trampoline,
                 hot_patch: ct.patch_above,
-                enabled: true,
+                enabled: false,
                 n_ip: ct.num_ips,
                 old_ips: ct.old_ips.into(),
                 new_ips: ct.new_ips.into(),
@@ -170,7 +335,7 @@ impl HookEntry {
             // Enable: write JMP_REL at patch_target pointing to detour
             let jmp = &mut *(patch_target as *mut JmpRel);
             jmp.opcode = 0xE9;
-            
+
             let displacement = (self.detour as isize) - (patch_target as isize + size_rel as isize);
             if displacement < i32::MIN as isize || displacement > i32::MAX as isize {
                 // This hook is too far away for a 0xE9 jump!
@@ -314,6 +479,20 @@ impl Trampoline {
 
             copysize = hde64_disasm(old_inst as *const c_void, &mut hs);
 
+            trace!(
+                "old_pos={} old_inst=0x{:x} opcode={:02x} modrm={:02x} len={} copySize={}",
+                old_pos, old_inst as usize, hs.opcode, hs.modrm, hs.len, copysize
+            );
+
+            match hs.opcode {
+                0xE8 => trace!("  → CALL"),
+                0xE9 | 0xEB => trace!("  → JMP"),
+                0x70..=0x7F | 0x0F if hs.opcode2 & 0xF0 == 0x80 => trace!("  → Jcc"),
+                0xC2 | 0xC3 => trace!("  → RET"),
+                _ if (hs.modrm & 0xC7) == 0x05 => trace!("  → RIP-relative"),
+                _ => trace!("  → COPY"),
+            }
+
             if (hs.flags & crate::hde::F_ERROR) != 0 {
                 return Err(HookError::DisassemblyError);
             }
@@ -321,45 +500,44 @@ impl Trampoline {
             copysrc = old_inst as LPVOID;
 
             if (old_pos as usize >= size_of::<JmpRel>()) {
-                // The trampoline function is long enough.
-                // Complete the function with the jump to the target function.
-
                 jmp.address = old_inst as u64;
                 copysrc = &jmp as *const _ as LPVOID;
                 copysize = size_of_val(&jmp) as u32;
                 finished = true;
             } else if (hs.modrm & 0xC7) == 0x05 {
-                // Instructions using RIP relative addressing. (ModR/M =
-                // 00???101B)
-                //
-
-                let mut _rel_addr: *mut u8 = null_mut();
+                println!("RIP RELATIVE OVERRIDE");
+                // Instructions using RIP relative addressing. (ModR/M = 00???101B)
                 std::ptr::copy_nonoverlapping(
                     old_inst as *const u8,
                     inst_buffer.as_mut_ptr(),
-                    copysize as usize,
+                    hs.len as usize, // Use hs.len, not copysize
                 );
 
-                copysrc = inst_buffer.as_mut_ptr() as *mut _;
+                copysrc = inst_buffer.as_mut_ptr() as LPVOID;
 
                 // Relative address is stored at (instruction length - immediate value length -
                 // 4).
                 let disp_size = ((hs.flags & 0x3C) >> 2) as isize;
-
                 let rel_addr = inst_buffer
                     .as_mut_ptr()
                     .offset(hs.len as isize)
                     .offset(-disp_size)
                     .offset(-4) as *mut u32;
 
-                let new_value = (old_inst
+                // Compute delta exactly as MinHook: (old_target) - (new_inst + hs.len)
+                let old_target = old_inst
                     .offset(hs.len as isize)
-                    .offset(hs.disp.disp32 as isize))
-                .offset_from(new_inst.offset(hs.len as isize))
-                    as u32;
+                    .offset(hs.disp.disp32 as isize);
+                let new_base = new_inst.offset(hs.len as isize);
+                let delta: isize = old_target.offset_from(new_base);
 
-                *rel_addr = new_value;
+                if delta < i32::MIN as isize || delta > i32::MAX as isize {
+                    return Err(HookError::TrampolineError);
+                }
 
+                *rel_addr = delta as i32 as u32;
+
+                // Complete the function if JMP (FF /4).
                 if hs.opcode == 0xFF && hs.modrm_reg == 4 {
                     finished = true;
                 }
