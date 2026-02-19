@@ -2,11 +2,13 @@ pub mod pattern;
 
 use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
-use crate::winapi::__movsb;
+use crate::winapi::FlushInstructionCache;
+use crate::winapi::GetCurrentProcess;
 use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::VirtualAlloc;
+use crate::winapi::VirtualProtect;
 use crate::winapi::VirtualQuery;
 use std::ffi::c_void;
 use std::ptr::null_mut;
@@ -140,9 +142,63 @@ impl HookEntry {
             if !(original.is_null()) {
                 *original = hook.trampoline as LPVOID;
             }
-
             return Ok(hook);
         }
+    }
+
+    pub unsafe fn toggle(&mut self) -> Result<(), HookError> {
+        let mut old_protect = 0;
+        let size_rel = size_of::<JmpRel>();
+        let size_short = size_of::<JmpRelShort>();
+        let mut patch_size = size_rel;
+        let mut patch_target = self.target;
+        if self.hot_patch {
+            patch_target = patch_target.sub(size_rel);
+            patch_size += size_short;
+        }
+        if VirtualProtect(
+            patch_target as LPVOID,
+            patch_size as u64,
+            0x40,
+            &mut old_protect,
+        ) == 0
+        {
+            return Err(HookError::NonExecutableAddress);
+        }
+
+        if !self.enabled {
+            // Enable: write JMP_REL at patch_target pointing to detour
+            let jmp = &mut *(patch_target as *mut JmpRel);
+            jmp.opcode = 0xE9;
+            jmp.operand = self.detour as i32 - (patch_target as i32 + size_rel as i32);
+
+            if self.hot_patch {
+                // Write short jump at target pointing back to patch_target (the JMP_REL)
+                let short_jmp = &mut *(self.target as *mut JmpRelShort);
+                short_jmp.opcode = 0xEB;
+                short_jmp.operand = (0i32 - (size_short + size_rel) as i32) as i8;
+            }
+        } else {
+            // Disable: restore original bytes from backup
+            std::ptr::copy_nonoverlapping(self.backup.as_ptr(), patch_target, patch_size);
+        }
+
+        VirtualProtect(
+            patch_target as LPVOID,
+            patch_size as u64,
+            old_protect,
+            &mut old_protect,
+        );
+
+        FlushInstructionCache(
+            GetCurrentProcess(),
+            patch_target as LPVOID,
+            patch_size as u64,
+        );
+
+        self.enabled = !self.enabled;
+
+        Ok(())
     }
 }
 #[repr(C, packed)]
@@ -270,8 +326,12 @@ impl Trampoline {
                 // 00???101B)
                 //
 
-                let mut rel_addr: *mut u8 = null_mut();
-                __movsb(inst_buffer.as_mut_ptr(), old_inst, copysize as u64);
+                let mut _rel_addr: *mut u8 = null_mut();
+                std::ptr::copy_nonoverlapping(
+                    inst_buffer.as_mut_ptr(),
+                    old_inst,
+                    copysize as usize,
+                );
 
                 copysrc = inst_buffer.as_mut_ptr() as *mut _;
 
@@ -394,10 +454,10 @@ impl Trampoline {
             ct.new_ips[ct.num_ips as usize] = new_pos;
             ct.num_ips += 1;
 
-            __movsb(
+            std::ptr::copy_nonoverlapping(
                 ct.trampoline.offset(new_pos as isize),
                 copysrc as *mut u8,
-                copysize as u64,
+                copysize as usize,
             );
 
             new_pos += copysize as u8;
