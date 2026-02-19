@@ -1,7 +1,9 @@
 pub mod pattern;
 
+use crate::ExpError;
 use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
+use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::winapi::FlushInstructionCache;
 use crate::winapi::GetCurrentProcess;
 use crate::winapi::GetSystemInfo;
@@ -56,6 +58,9 @@ pub enum HookError {
 
     #[error("Trampoline Error")]
     TrampolineError,
+
+    #[error("Runtime error: {0}")]
+    RuntimeError(#[from] ExpError),
 }
 
 #[repr(C)]
@@ -264,7 +269,23 @@ pub unsafe fn allocate_buffer(origin: *mut u8) -> *mut u8 {
 }
 
 impl HookEntry {
-    pub fn new(target: *mut u8, detour: *mut u8, original: *mut LPVOID) -> Result<Self, HookError> {
+    /// hook a loaded winapi function
+    pub fn from_winapi_function(
+        func_name: impl ToString,
+        module_name: Option<impl ToString>,
+        detour: *mut u8,
+    ) -> Result<Self, HookError> {
+        let runtime = match module_name {
+            Some(module) => PE64Runtime::from_module(module)?,
+            None => PE64Runtime::from_current_module()?,
+        };
+
+        let runtime_addr = runtime.find_export(func_name.to_string())?;
+
+        Self::new(runtime_addr.func_addr as *mut u8, detour)
+    }
+
+    pub fn new(target: *mut u8, detour: *mut u8) -> Result<Self, HookError> {
         if target.is_null() || detour.is_null() {
             return Err(HookError::InvalidPointer);
         }
@@ -304,10 +325,6 @@ impl HookEntry {
 
             let src_slice = std::slice::from_raw_parts(src, size);
             hook.backup.copy_from_slice(src_slice);
-
-            if !(original.is_null()) {
-                *original = hook.trampoline as LPVOID;
-            }
             return Ok(hook);
         }
     }
@@ -373,6 +390,8 @@ impl HookEntry {
 
         Ok(())
     }
+
+    pub fn original(&self) -> *mut u8 { self.trampoline }
 }
 #[repr(C, packed)]
 struct JmpAbs {

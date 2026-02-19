@@ -1,6 +1,5 @@
 use libwinexploit::hooking::HookEntry;
 use libwinexploit::winapi::GetProcAddress;
-use libwinexploit::winapi::LPVOID;
 use libwinexploit::winapi::LoadLibraryW;
 use libwinexploit::winapi::MessageBoxW;
 use std::ffi::c_void;
@@ -70,13 +69,18 @@ fn main() {
         );
 
         // Install hook
-        let mut original: LPVOID = null_mut();
-        let mut hook = HookEntry::new(target, hooked_message_box as *mut u8, &mut original)
-            .expect("Failed to create hook");
+        // let mut hook = HookEntry::new(target, hooked_message_box as *mut u8, &mut
+        // original)     .expect("Failed to create hook");
 
-        ORIGINAL_MESSAGEBOX.store(original as *mut (), Ordering::SeqCst);
+        let mut hook = HookEntry::from_winapi_function(
+            "MessageBoxW",
+            Some("USER32"),
+            hooked_message_box as *mut u8,
+        )
+        .expect("Failed to hook");
+        ORIGINAL_MESSAGEBOX.store(hook.original() as *mut (), Ordering::SeqCst);
 
-        dump_bytes("Trampoline bytes (64)", original as *const u8, 64);
+        dump_bytes("Trampoline bytes (64)", hook.original() as *const u8, 64);
         dump_bytes("MessageBoxW bytes (16)", target as *const u8, 16);
 
         // Enable → hooked call
