@@ -6,6 +6,7 @@ use crate::winapi::__movsb;
 use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
+use crate::winapi::VirtualAlloc;
 use crate::winapi::VirtualQuery;
 use std::ffi::c_void;
 use std::ptr::null_mut;
@@ -26,6 +27,7 @@ pub struct HookEntry {
     n_ip: u8, // Instruction boundary count
     old_ips: Vec<u8>,
     new_ips: Vec<u8>,
+    backup: Vec<u8>,
 }
 
 #[derive(Error, Debug)]
@@ -61,9 +63,40 @@ unsafe fn check_address_executable(address: *mut u8) -> bool {
 
     return (mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0);
 }
+unsafe fn alloc_near_buffer(target: *mut u8, size: usize) -> *mut u8 {
+    let mut addr = target as usize;
+    let min_addr = addr.saturating_sub(0x7FFF0000);
+    let max_addr = addr.saturating_add(0x7FFF0000).min(usize::MAX - size);
 
+    // Try above target first
+    let mut candidate = (addr + 0xFFFF) & !0xFFFF; // align to 64k
+    while candidate < max_addr {
+        let result = VirtualAlloc(
+            candidate as LPVOID,
+            size as u64,
+            0x3000, // MEM_COMMIT | MEM_RESERVE
+            0x40,   // PAGE_EXECUTE_READWRITE
+        );
+        if !result.is_null() {
+            return result as *mut u8;
+        }
+        candidate += 0x10000; // step by 64k (VirtualAlloc granularity)
+    }
+
+    // Try below target
+    let mut candidate = addr.saturating_sub(0xFFFF) & !0xFFFF;
+    while candidate > min_addr {
+        let result = VirtualAlloc(candidate as LPVOID, size as u64, 0x3000, 0x40);
+        if !result.is_null() {
+            return result as *mut u8;
+        }
+        candidate = candidate.saturating_sub(0x10000);
+    }
+
+    null_mut()
+}
 impl HookEntry {
-    pub fn new(target: *mut u8, detour: *mut u8) -> Result<Self, HookError> {
+    pub fn new(target: *mut u8, detour: *mut u8, original: *mut LPVOID) -> Result<Self, HookError> {
         if target.is_null() || detour.is_null() {
             return Err(HookError::InvalidPointer);
         }
@@ -72,9 +105,44 @@ impl HookEntry {
             if !check_address_executable(target) || !check_address_executable(detour) {
                 return Err(HookError::InvalidPointer);
             }
-        }
 
-        todo!()
+            let buffer_addr = alloc_near_buffer(target, 64);
+            if buffer_addr.is_null() {
+                return Err(HookError::AllocationFailed);
+            }
+
+            let ct = Trampoline::new(target, detour, buffer_addr)?;
+            let mut hook = HookEntry {
+                target,
+                detour: ct.relay,
+                trampoline: ct.trampoline,
+                hot_patch: ct.patch_above,
+                enabled: true,
+                n_ip: ct.num_ips,
+                old_ips: ct.old_ips.into(),
+                new_ips: ct.new_ips.into(),
+                backup: vec![],
+            };
+            let size_rel = size_of::<JmpRel>();
+            let size_short = size_of::<JmpRelShort>();
+
+            let (src, size) = if ct.patch_above {
+                (target.sub(size_rel), size_rel + size_short)
+            } else {
+                (target, size_rel)
+            };
+
+            hook.backup.resize(size, 0);
+
+            let src_slice = std::slice::from_raw_parts(src, size);
+            hook.backup.copy_from_slice(src_slice);
+
+            if !(original.is_null()) {
+                *original = hook.trampoline as LPVOID;
+            }
+
+            return Ok(hook);
+        }
     }
 }
 #[repr(C, packed)]
@@ -129,7 +197,7 @@ impl Trampoline {
         target: *mut u8,
         detour: *mut u8,
         trampoline: *mut u8,
-    ) -> Result<(), HookError> {
+    ) -> Result<Self, HookError> {
         let mut call = CallAbs {
             opcode0: 0xFF,
             opcode1: 0x15,
@@ -379,7 +447,7 @@ impl Trampoline {
             std::mem::size_of_val(&jmp),
         );
 
-        return Ok(());
+        return Ok(ct);
     }
 
     unsafe fn is_code_padding(inst: LPBYTE, size: u64) -> bool {
