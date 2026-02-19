@@ -170,7 +170,14 @@ impl HookEntry {
             // Enable: write JMP_REL at patch_target pointing to detour
             let jmp = &mut *(patch_target as *mut JmpRel);
             jmp.opcode = 0xE9;
-            jmp.operand = self.detour as i32 - (patch_target as i32 + size_rel as i32);
+            
+            let displacement = (self.detour as isize) - (patch_target as isize + size_rel as isize);
+            if displacement < i32::MIN as isize || displacement > i32::MAX as isize {
+                // This hook is too far away for a 0xE9 jump!
+                // You MUST use a 14-byte absolute jump if this happens.
+                return Err(HookError::TrampolineError);
+            }
+            jmp.operand = displacement as i32;
 
             if self.hot_patch {
                 // Write short jump at target pointing back to patch_target (the JMP_REL)
@@ -328,8 +335,8 @@ impl Trampoline {
 
                 let mut _rel_addr: *mut u8 = null_mut();
                 std::ptr::copy_nonoverlapping(
+                    old_inst as *const u8,
                     inst_buffer.as_mut_ptr(),
-                    old_inst,
                     copysize as usize,
                 );
 
@@ -455,10 +462,13 @@ impl Trampoline {
             ct.num_ips += 1;
 
             std::ptr::copy_nonoverlapping(
-                ct.trampoline.offset(new_pos as isize),
-                copysrc as *mut u8,
+                copysrc as *const u8,
+                ct.trampoline.add(new_pos as usize),
                 copysize as usize,
             );
+
+            debug_assert!(copysize > 0);
+            debug_assert!((new_pos as usize + copysize as usize) <= 64 - size_of::<JmpAbs>());
 
             new_pos += copysize as u8;
             old_pos += hs.len;

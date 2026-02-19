@@ -18,6 +18,7 @@ unsafe extern "system" fn hooked_message_box(
     _caption: *const u16,
     utype: u32,
 ) -> i32 {
+    println!("In Hook!");
     let original: unsafe extern "system" fn(*mut c_void, *const u16, *const u16, u32) -> i32 =
         std::mem::transmute(ORIGINAL_MESSAGEBOX.load(Ordering::SeqCst));
 
@@ -59,7 +60,24 @@ fn main() {
         ORIGINAL_MESSAGEBOX.store(original as *mut (), Ordering::SeqCst);
 
         println!("Trampoline: {:p}", original);
+        let tramp_ptr = original as *const u8;
+        print!("Trampoline bytes: ");
+        unsafe {
+            for i in 0..64 {
+                print!("{:02X} ", *tramp_ptr.add(i));
+            }
+        }
+        println!();
 
+        // Also dump the first 16 bytes of MessageBoxW to see what we're disassembling
+        let target_ptr = target as *const u8;
+        print!("MessageBoxW bytes: ");
+        unsafe {
+            for i in 0..16 {
+                print!("{:02X} ", *target_ptr.add(i));
+            }
+        }
+        println!();
         // Enable
         hook.toggle().expect("Failed to enable hook");
         let text = to_wide("Hello from generated bindings!");

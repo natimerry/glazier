@@ -185,13 +185,8 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
     let mut p: *const u8 = code as *const u8;
 
     // Local copies of the lookup table as a byte slice
-    let ht: &[u8] = {
-        // The table is stored as u64 elements for alignment; reinterpret as bytes.
-        core::slice::from_raw_parts(
-            HDE64_TABLE.as_ptr() as *const u8,
-            HDE64_TABLE.len() * core::mem::size_of::<u64>(),
-        )
-    };
+
+    let ht: &[u8] = HDE64_TABLE.as_slice().align_to::<u8>().1;
 
     let mut c: u8 = 0;
     let mut cflags: u8;

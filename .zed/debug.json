@@ -26,4 +26,17 @@
     },
     "sourceLanguages": ["rust"],
   },
+
+  {
+    "label": "HOOK",
+    "adapter": "CodeLLDB",
+    "build": {
+      "command": "cargo",
+      "args": ["build", "--bin", "hook"],
+    },
+    "sourceLanguages": ["rust"],
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/target/debug/hook.exe",
+    "args": [],
+  },
 ]
