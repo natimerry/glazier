@@ -3,6 +3,7 @@ pub mod pattern;
 use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
 use crate::winapi::__movsb;
+use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::VirtualQuery;
@@ -49,25 +50,26 @@ pub enum HookError {
     TrampolineError,
 }
 
+unsafe fn check_address_executable(address: *mut u8) -> bool {
+    let mut mi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
+
+    VirtualQuery(
+        address as LPVOID,
+        &mut mi as *mut _,
+        size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+    );
+
+    return (mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0);
+}
+
 impl HookEntry {
-    unsafe fn check_address_executable(address: *mut u8) -> bool {
-        let mut mi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
-
-        VirtualQuery(
-            address as LPVOID,
-            &mut mi as *mut _,
-            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
-        );
-
-        return (mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0);
-    }
     pub fn new(target: *mut u8, detour: *mut u8) -> Result<Self, HookError> {
         if target.is_null() || detour.is_null() {
             return Err(HookError::InvalidPointer);
         }
 
         unsafe {
-            if !Self::check_address_executable(target) || !Self::check_address_executable(detour) {
+            if !check_address_executable(target) || !check_address_executable(detour) {
                 return Err(HookError::InvalidPointer);
             }
         }
@@ -75,14 +77,14 @@ impl HookEntry {
         todo!()
     }
 }
-
+#[repr(C, packed)]
 struct JmpAbs {
     opcode0: u8, // FF25 00000000: JMP [+6]
     opcode1: u8,
     dummy: u32,
     address: u64,
 }
-
+#[repr(C, packed)]
 struct CallAbs {
     opcode0: u8, // FF15 00000002: CALL [+6]
     opcode1: u8,
@@ -91,7 +93,7 @@ struct CallAbs {
     dummy2: u8,
     address: u64, // Absolute destination address
 }
-
+#[repr(C, packed)]
 struct JccAbs {
     opcode: u8, // 7* 0E:         J** +16
     dummy0: u8,
@@ -100,7 +102,7 @@ struct JccAbs {
     dummy3: u32,
     address: u64, // Absolute destination address
 }
-
+#[repr(C, packed)]
 struct Trampoline {
     target: *mut u8,
     detour: *mut u8,
@@ -111,10 +113,15 @@ struct Trampoline {
     old_ips: [u8; 8],
     new_ips: [u8; 8],
 }
-
+#[repr(C, packed)]
 struct JmpRel {
     opcode: u8,   // E9/E8 xxxxxxxx: JMP/CALL +5+xxxxxxxx
     operand: i32, // Relative destination address
+}
+#[repr(C, packed)]
+struct JmpRelShort {
+    opcode: u8,  // EB xx: JMP +2+xx
+    operand: i8, // Relative destination address
 }
 
 impl Trampoline {
@@ -166,13 +173,13 @@ impl Trampoline {
             new_ips: [0; 8],
         };
 
-        while (!finished) {
+        while !finished {
             let mut hs = hde64s::default();
             let mut copysize = 0;
             let mut copysrc: LPVOID = null_mut();
 
-            let mut old_inst = ct.target.offset(old_pos as isize);
-            let mut new_inst = ct.trampoline.offset(new_pos as isize);
+            let old_inst = ct.target.offset(old_pos as isize);
+            let new_inst = ct.trampoline.offset(new_pos as isize);
 
             copysize = hde64_disasm(old_inst as *const c_void, &mut hs);
 
@@ -188,6 +195,7 @@ impl Trampoline {
 
                 jmp.address = old_inst as u64;
                 copysrc = &jmp as *const _ as LPVOID;
+                copysize = size_of_val(&jmp) as u32;
                 finished = true;
             } else if (hs.modrm & 0xC7) == 0x05 {
                 // Instructions using RIP relative addressing. (ModR/M =
@@ -268,7 +276,7 @@ impl Trampoline {
                 {
                     dest += hs.imm.imm8 as u64;
                 } else {
-                    dest += hs.imm.imm8 as u64;
+                    dest += hs.imm.imm32 as u64;
                 }
 
                 let start = ct.target as u64;
@@ -327,9 +335,64 @@ impl Trampoline {
             new_pos += copysize as u8;
             old_pos += hs.len;
         }
-        
-        
 
-        todo!()
+        // try jong jmp
+        //
+        if (old_pos as usize) < size_of::<JmpRel>()
+            && !Self::is_code_padding(
+                ct.target.add(old_pos as usize),
+                (size_of::<JmpRel>() as u64) - old_pos as u64,
+            )
+        {
+            // Is there enough place for a short jump?
+            //
+            if (old_pos as usize) < size_of::<JmpRelShort>()
+                && !Self::is_code_padding(
+                    ct.target.add(old_pos as usize),
+                    (size_of::<JmpRelShort>() as u64) - old_pos as u64,
+                )
+            {
+                return Err(HookError::TrampolineError);
+            }
+
+            // Can we place the long jump above the function?
+            if !check_address_executable(ct.target.sub(size_of::<JmpRel>() as usize)) {
+                return Err(HookError::TrampolineError);
+            }
+
+            if !Self::is_code_padding(
+                ct.target.sub(size_of::<JmpRel>() as usize),
+                size_of::<JmpRel>() as u64,
+            ) {
+                return Err(HookError::TrampolineError);
+            }
+
+            ct.patch_above = true;
+        }
+
+        jmp.address = ct.detour as u64;
+        ct.relay = ct.trampoline.add(new_pos as usize);
+
+        std::ptr::copy_nonoverlapping(
+            &jmp as *const _ as *const u8,
+            ct.relay,
+            std::mem::size_of_val(&jmp),
+        );
+
+        return Ok(());
+    }
+
+    unsafe fn is_code_padding(inst: LPBYTE, size: u64) -> bool {
+        if *inst != 0x0 && *inst != 0x90 && *inst != 0xCC {
+            return false;
+        }
+
+        for i in 1..size {
+            if *(inst.add(i as usize)) != *inst {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
