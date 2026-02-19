@@ -176,6 +176,7 @@ unsafe fn read_u32(p: *const u8) -> u32 { (p as *const u32).read_unaligned() }
 #[inline(always)]
 unsafe fn read_u64(p: *const u8) -> u64 { (p as *const u64).read_unaligned() }
 
+#[allow(unused)]
 /// Disassemble one x86-64 instruction.
 pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
     // Zero the output struct

@@ -20,6 +20,7 @@ use thiserror::Error;
 
 pub static mut GLOBAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[allow(unused)]
 pub struct HookEntry {
     target: *mut u8,
     /// Target of the hook
@@ -85,7 +86,7 @@ unsafe fn check_address_executable(address: *mut u8) -> bool {
         size_of::<MEMORY_BASIC_INFORMATION>() as u64,
     );
 
-    return (mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0);
+    return mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0;
 }
 
 unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
@@ -420,6 +421,7 @@ struct JmpRelShort {
     operand: i8, // Relative destination address
 }
 
+#[allow(unused)]
 impl Trampoline {
     pub unsafe fn new(
         target: *mut u8,
@@ -499,7 +501,7 @@ impl Trampoline {
 
             copysrc = old_inst as LPVOID;
 
-            if (old_pos as usize >= size_of::<JmpRel>()) {
+            if old_pos as usize >= size_of::<JmpRel>() {
                 jmp.address = old_inst as u64;
                 copysrc = &jmp as *const _ as LPVOID;
                 copysize = size_of_val(&jmp) as u32;
@@ -621,7 +623,7 @@ impl Trampoline {
                 }
             } else if (hs.opcode & 0xFE) == 0xC2 {
                 // we reached ret
-                finished = (old_inst as u64 >= jmp_dest);
+                finished = old_inst as u64 >= jmp_dest;
             }
             if (old_inst as u64) < jmp_dest && copysize != hs.len as u32 {
                 return Err(HookError::TrampolineError);
