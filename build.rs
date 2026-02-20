@@ -1,4 +1,5 @@
 use std::env;
+use std::ffi::OsString;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::fs::{self};
@@ -81,9 +82,76 @@ unsafe{{
     fs::write(&dest_path, code).unwrap();
 }
 
+fn windows_kits_root10() -> PathBuf {
+    use winreg::RegKey;
+    use winreg::enums::HKEY_LOCAL_MACHINE;
+
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+
+    // Common locations for KitsRoot10. KitsRoot10 value typically includes trailing
+    // backslash. [web:7][web:17]
+    let candidates = [
+        r"SOFTWARE\Microsoft\Windows Kits\Installed Roots",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows Kits\Installed Roots",
+    ];
+
+    for key_path in candidates {
+        if let Ok(key) = hklm.open_subkey(key_path) {
+            if let Ok(dir) = key.get_value::<String, _>("KitsRoot10") {
+                return PathBuf::from(dir);
+            }
+        }
+    }
+
+    panic!(
+        "Windows SDK not found: registry value KitsRoot10 missing.\n\
+         Looked in HKLM\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots (and WOW6432Node)."
+    );
+}
+
+fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
+    let include_root = kits_root10.join("Include");
+    let rd = fs::read_dir(&include_root).unwrap_or_else(|e| {
+        panic!(
+            "Windows SDK include root not found: {:?} ({})",
+            include_root, e
+        )
+    });
+
+    // Pick the newest version folder by lexicographic sort
+    let mut versions: Vec<OsString> = rd
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().ok().map(|t| t.is_dir()).unwrap_or(false))
+        .map(|e| e.file_name())
+        .collect();
+
+    versions.sort();
+    versions.reverse();
+
+    for ver in versions {
+        let base = include_root.join(&ver);
+        let um = base.join("um");
+        let shared = base.join("shared");
+        let ucrt = base.join("ucrt");
+
+        if um.is_dir() && shared.is_dir() && ucrt.is_dir() {
+            return base;
+        }
+    }
+
+    panic!(
+        "No Windows SDK Include/<version> directory contained um/shared/ucrt under {:?}",
+        include_root
+    );
+}
+
 fn generate_winapi_bindings(out_dir: &str) {
     log!("Starting WinAPI bindings generation...");
 
+    let kits = windows_kits_root10();
+    let include_ver = newest_windows_sdk_include_dir(&kits);
+
+    log!("Found WINAPI version: {:?}", &include_ver);
     let bindings = bindgen::Builder::default()
         .header_contents(
             "wrapper.h",
@@ -104,9 +172,12 @@ fn generate_winapi_bindings(out_dir: &str) {
             "#,
         )
         .clang_arg(format!("-I./phnt"))
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared")
-        .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt")
+        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um")
+        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared")
+        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt")
+        .clang_arg(format!("-I{}", include_ver.join("um").display()))
+        .clang_arg(format!("-I{}", include_ver.join("shared").display()))
+        .clang_arg(format!("-I{}", include_ver.join("ucrt").display()))
         .clang_arg("-fms-compatibility")
         .clang_arg("-fms-extensions")
         .clang_arg("--target=x86_64-pc-windows-msvc")
