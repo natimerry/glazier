@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering; // your scanner
 
 static ORIGINAL_MESSAGEBOX: AtomicPtr<()> = AtomicPtr::new(null_mut());
 
+#[allow(unsafe_op_in_unsafe_fn)]
 unsafe extern "system" fn hooked_message_box(
     hwnd: *mut c_void,
     _text: *const u16,

@@ -58,20 +58,6 @@ fn main() {
 
         let target: *mut u8 = std::mem::transmute(target_fn);
 
-        println!("MessageBoxW (GetProcAddress): {:p}", target);
-        println!(
-            "MessageBoxW (crate import):   {:p}",
-            MessageBoxW as *const ()
-        ); // should match
-        println!(
-            "Detour address:               {:p}",
-            hooked_message_box as *mut u8
-        );
-
-        // Install hook
-        // let mut hook = HookEntry::new(target, hooked_message_box as *mut u8, &mut
-        // original)     .expect("Failed to create hook");
-
         let mut hook = HookEntry::from_winapi_function(
             "MessageBoxW",
             Some("USER32"),
