@@ -40,7 +40,7 @@ fn main() {
         let base = module as *const u8;
         let size = 0x100000;
 
-        // Pattern from your bytes
+
         let mut pattern = Pattern::from("48 83 EC 38 45 33 DB ?? 39 1D EA 18 ?? 00 74 25").unwrap();
 
         let results = pattern
