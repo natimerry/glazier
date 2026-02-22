@@ -556,7 +556,7 @@ impl Trampoline {
                     return Err(HookError::TrampolineError);
                 }
 
-                *rel_addr = delta as i32 as u32;
+                std::ptr::write_unaligned(rel_addr, delta as i32 as u32);
 
                 // Complete the function if JMP (FF /4).
                 if hs.opcode == 0xFF && hs.modrm_reg == 4 {
