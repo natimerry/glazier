@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 byteorder = "1.5.0"
 env_logger = "0.11.8"
-iced-x86 = "1.21.0"
 log = "0.4.29"
 obfstr = {version= "0.4.4", optional = true}
 thiserror = "2.0.17"
