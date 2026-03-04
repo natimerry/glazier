@@ -5,11 +5,14 @@ use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::IMAGE_DIRECTORY_ENTRY_EXPORT;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
+use crate::runtime::memory::LocalMemory;
+use crate::runtime::memory::MemoryView;
 use crate::utils::get_teb;
 use windows_sys::Win32::System::Threading::TEB;
 use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
 
-pub struct PE64Runtime {
+pub struct PE64Runtime<M: MemoryView> {
+    pub memory: M,
     pub teb: *mut TEB,
 
     /// Base address of the loaded module
@@ -34,7 +37,7 @@ pub struct PE64Runtime {
     pub image_size: u32,
 }
 
-impl PE64Runtime {
+impl PE64Runtime<LocalMemory> {
     pub fn from_current_module() -> Result<Self, ExpError> {
         unsafe {
             let teb = get_teb();
@@ -105,7 +108,7 @@ impl PE64Runtime {
         }
     }
 
-    unsafe fn from_base_address(teb: *mut TEB, module_base: u64) -> Result<Self, ExpError> {
+    fn from_base_address(teb: *mut TEB, module_base: u64) -> Result<Self, ExpError> {
         unsafe {
             let dos_header = module_base as *const ImageDosHeader;
             let nt_headers =
@@ -129,6 +132,7 @@ impl PE64Runtime {
             let image_size = (*nt_headers).optional_header.size_of_image;
 
             Ok(Self {
+                memory: LocalMemory {},
                 teb,
                 module_base,
                 dos_header,
@@ -140,6 +144,10 @@ impl PE64Runtime {
             })
         }
     }
+}
+
+impl<M: MemoryView> PE64Runtime<M> {
+    pub fn from_remote_handle(memory: impl MemoryView) -> Result<Self, ExpError> { todo!() }
 
     pub fn sections(&self) -> &[ImageSectionHeader] {
         unsafe { core::slice::from_raw_parts(self.section_headers, self.section_count as usize) }

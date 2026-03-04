@@ -4,15 +4,18 @@ use crate::PE64Static;
 use crate::pe::export_address_table::ImageExportDirectory;
 use crate::pe::export_address_table::ParsedExportFunction;
 use crate::pe::export_address_table::ParsedExportModule;
+use crate::runtime::memory::LocalMemory;
+use crate::runtime::memory::MemoryView;
 use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::utils::cast_from_mem;
 use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
-use log::{debug,warn};
+use log::debug;
+use log::warn;
 use std::ffi::c_char;
 
-impl PE64Runtime {
-    pub fn exports(&self) -> RuntimeParsedExportIterator<'_> {
+impl PE64Runtime<LocalMemory> {
+    pub fn exports(&self) -> RuntimeParsedExportIterator<'_, LocalMemory> {
         RuntimeParsedExportIterator::new(self)
     }
 
@@ -124,6 +127,9 @@ impl PE64Runtime {
             }
         }
     }
+}
+
+impl<M: MemoryView> PE64Runtime<M> {
     pub fn find_export(
         &self,
         export_name: impl ToString,
@@ -181,16 +187,16 @@ impl PE64Runtime {
     }
 }
 
-pub struct RuntimeParsedExportIterator<'a> {
-    runtime: &'a PE64Runtime,
+pub struct RuntimeParsedExportIterator<'a, M: MemoryView> {
+    runtime: &'a PE64Runtime<M>,
     index: usize,
 }
 
-impl<'a> RuntimeParsedExportIterator<'a> {
-    pub fn new(runtime: &'a PE64Runtime) -> Self { Self { runtime, index: 0 } }
+impl<'a, M: MemoryView> RuntimeParsedExportIterator<'a, M> {
+    pub fn new(runtime: &'a PE64Runtime<M>) -> Self { Self { runtime, index: 0 } }
 }
 
-impl<'a> Iterator for RuntimeParsedExportIterator<'a> {
+impl<'a, M: MemoryView> Iterator for RuntimeParsedExportIterator<'a, M> {
     type Item = ExportedFunction;
 
     fn next(&mut self) -> Option<Self::Item> {
