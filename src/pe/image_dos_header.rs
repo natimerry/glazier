@@ -1,7 +1,7 @@
 use crate::pe::PESection;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ImageDosHeader {
     pub e_magic: u16,
     e_cblp: u16,
