@@ -15,10 +15,6 @@ use log::warn;
 use std::ffi::c_char;
 
 impl PE64Runtime<LocalMemory> {
-    pub fn exports(&self) -> RuntimeParsedExportIterator<'_, LocalMemory> {
-        RuntimeParsedExportIterator::new(self)
-    }
-
     pub fn get_syscall_num(&self, exported_func: ParsedExportFunction) -> Result<u16, ExpError> {
         let func_addr = exported_func.func_addr as *const u8;
 
@@ -130,60 +126,76 @@ impl PE64Runtime<LocalMemory> {
 }
 
 impl<M: MemoryView> PE64Runtime<M> {
+    pub fn exports(&self) -> RuntimeParsedExportIterator<'_, M> {
+        RuntimeParsedExportIterator::new(self)
+    }
+
     pub fn find_export(
         &self,
         export_name: impl ToString,
     ) -> Result<ParsedExportFunction, ExpError> {
-        unsafe {
-            if !self.has_exports() {
-                return Err(ExpError::ExportError(
-                    "PE64Runtime has no exports".to_string(),
-                ));
-            }
-
-            let name_table =
-                (self.module_base + (*self.export_dir).address_of_names as u64) as *const u32;
-
-            let ordinal_table = (self.module_base
-                + (*self.export_dir).address_of_name_ordinals as u64)
-                as *const u16;
-            let func_table =
-                (self.module_base + (*self.export_dir).address_of_functions as u64) as *const u32;
-
-            let target_name = export_name.to_string();
-
-            for i in 0..(*self.export_dir).number_of_names {
-                let name_rva = *name_table.add(i as usize);
-                let func_name_ptr = (self.module_base + name_rva as u64) as *const c_char;
-
-                // strcmpi equivalent
-                let func_name = {
-                    let mut len = 0;
-                    while *func_name_ptr.add(len) != 0 {
-                        len += 1;
-                    }
-                    let slice = core::slice::from_raw_parts(func_name_ptr as *const u8, len);
-                    core::str::from_utf8_unchecked(slice)
-                };
-
-                if func_name.eq_ignore_ascii_case(&export_name.to_string()) {
-                    let ordinal = *ordinal_table.add(i as usize) as usize;
-
-                    let func_rva = *func_table.add(ordinal) as usize;
-                    return Ok(ParsedExportFunction {
-                        name: Some(export_name.to_string()),
-                        ordinal: ordinal as u32,
-                        func_addr: self.module_base as usize + func_rva,
-                        func_rva: func_rva as u32,
-                        forwarder: None,
-                    });
-                }
-            }
-            Err(ExpError::ExportError(format!(
-                "Export not found: {}",
-                target_name
-            )))
+        if !self.has_exports() {
+            return Err(ExpError::ExportError(
+                "PE64Runtime has no exports".to_string(),
+            ));
         }
+
+        let export_dir = self
+            .memory
+            .read::<ImageExportDirectory>(self.export_dir as u64)?;
+
+        let name_table_base = self.module_base + export_dir.address_of_names as u64;
+        let ordinal_table_base = self.module_base + export_dir.address_of_name_ordinals as u64;
+        let func_table_base = self.module_base + export_dir.address_of_functions as u64;
+
+        let target_name = export_name.to_string();
+
+        for i in 0..export_dir.number_of_names {
+            let name_rva = self
+                .memory
+                .read::<u32>(name_table_base + i as u64 * size_of::<u32>() as u64)?;
+            let func_name_ptr = self.module_base + name_rva as u64;
+
+            // Read the export name as a null-terminated string
+            let func_name = {
+                let mut bytes = Vec::new();
+                let mut offset = 0u64;
+                loop {
+                    let byte = self.memory.read::<u8>(func_name_ptr + offset)?;
+                    if byte == 0 {
+                        break;
+                    }
+                    bytes.push(byte);
+                    offset += 1;
+                }
+                String::from_utf8_lossy(&bytes).into_owned()
+            };
+
+            if func_name.eq_ignore_ascii_case(&target_name) {
+                let ordinal = self
+                    .memory
+                    .read::<u16>(ordinal_table_base + i as u64 * size_of::<u16>() as u64)?
+                    as usize;
+
+                let func_rva = self
+                    .memory
+                    .read::<u32>(func_table_base + ordinal as u64 * size_of::<u32>() as u64)?
+                    as usize;
+
+                return Ok(ParsedExportFunction {
+                    name: Some(target_name),
+                    ordinal: ordinal as u32,
+                    func_addr: self.module_base as usize + func_rva,
+                    func_rva: func_rva as u32,
+                    forwarder: None,
+                });
+            }
+        }
+
+        Err(ExpError::ExportError(format!(
+            "Export not found: {}",
+            target_name
+        )))
     }
 }
 
@@ -200,49 +212,71 @@ impl<'a, M: MemoryView> Iterator for RuntimeParsedExportIterator<'a, M> {
     type Item = ExportedFunction;
 
     fn next(&mut self) -> Option<Self::Item> {
-        unsafe {
-            if self.runtime.has_exports() == false {
-                return None;
-            }
-
-            let export_dir = &*self.runtime.export_dir;
-
-            if self.index >= export_dir.number_of_names as usize {
-                return None;
-            }
-
-            let name_table =
-                (self.runtime.module_base + export_dir.address_of_names as u64) as *const u32;
-            let ordinal_table = (self.runtime.module_base
-                + export_dir.address_of_name_ordinals as u64)
-                as *const u16;
-            let func_table =
-                (self.runtime.module_base + export_dir.address_of_functions as u64) as *const u32;
-
-            let name_rva = *name_table.add(self.index as usize);
-            let func_name_ptr = (self.runtime.module_base + name_rva as u64) as *const c_char;
-
-            let name = {
-                let mut len = 0;
-                while *func_name_ptr.add(len) != 0 {
-                    len += 1;
-                }
-                let slice = core::slice::from_raw_parts(func_name_ptr as *const u8, len);
-                String::from_utf8_lossy(slice).to_string()
-            };
-
-            let ordinal = *ordinal_table.add(self.index as usize) as usize;
-            let func_rva = *func_table.add(ordinal);
-            let address = self.runtime.module_base + func_rva as u64;
-
-            self.index += 1;
-
-            Some(ExportedFunction {
-                name,
-                address,
-                ordinal: ordinal as u16,
-            })
+        if !self.runtime.has_exports() {
+            return None;
         }
+
+        let export_dir = self
+            .runtime
+            .memory
+            .read::<ImageExportDirectory>(self.runtime.export_dir as u64)
+            .ok()?;
+
+        if self.index >= export_dir.number_of_names as usize {
+            return None;
+        }
+
+        let name_table_base = self.runtime.module_base + export_dir.address_of_names as u64;
+        let ordinal_table_base =
+            self.runtime.module_base + export_dir.address_of_name_ordinals as u64;
+        let func_table_base = self.runtime.module_base + export_dir.address_of_functions as u64;
+
+        let name_rva = self
+            .runtime
+            .memory
+            .read::<u32>(name_table_base + self.index as u64 * size_of::<u32>() as u64)
+            .ok()?;
+
+        let func_name_ptr = self.runtime.module_base + name_rva as u64;
+        let name = {
+            let mut bytes = Vec::new();
+            let mut offset = 0u64;
+            loop {
+                let byte = self
+                    .runtime
+                    .memory
+                    .read::<u8>(func_name_ptr + offset)
+                    .ok()?;
+                if byte == 0 {
+                    break;
+                }
+                bytes.push(byte);
+                offset += 1;
+            }
+            String::from_utf8_lossy(&bytes).to_string()
+        };
+
+        let ordinal = self
+            .runtime
+            .memory
+            .read::<u16>(ordinal_table_base + self.index as u64 * size_of::<u16>() as u64)
+            .ok()? as usize;
+
+        let func_rva = self
+            .runtime
+            .memory
+            .read::<u32>(func_table_base + ordinal as u64 * size_of::<u32>() as u64)
+            .ok()?;
+
+        let address = self.runtime.module_base + func_rva as u64;
+
+        self.index += 1;
+
+        Some(ExportedFunction {
+            name,
+            address,
+            ordinal: ordinal as u16,
+        })
     }
 }
 
