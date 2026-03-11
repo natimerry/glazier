@@ -1,4 +1,5 @@
 use crate::ExpError;
+use crate::runtime::memory::MemoryView;
 
 pub struct Pattern {
     bytes: Vec<u8>,
@@ -35,12 +36,16 @@ impl Pattern {
 
     pub fn scan(
         &mut self,
+        memory_reader: impl MemoryView,
         base: *const u8,
         size: usize,
         opt: PatternScanOption,
     ) -> Option<Vec<*const u8>> {
         let mut matches = vec![];
-        let data = unsafe { std::slice::from_raw_parts(base, size) };
+
+        let data = memory_reader
+            .read_bytes(base as u64, size)
+            .expect("Unrecoverable error trying to scan pattern");
 
         let n = self.bytes.len();
         if size < n {
