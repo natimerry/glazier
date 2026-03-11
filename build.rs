@@ -247,8 +247,7 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    // Re-export common types
-    writeln!(output, "pub use raw::*;").unwrap();
+    writeln!(output, "use raw::*;").unwrap();
 
     writeln!(output).unwrap();
 
