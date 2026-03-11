@@ -247,7 +247,8 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
-    writeln!(output, "use raw::*;").unwrap();
+    // todo: figure out a way to only reexport types
+    writeln!(output, "pub use raw::*;").unwrap();
 
     writeln!(output).unwrap();
 
