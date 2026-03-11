@@ -6,6 +6,12 @@ use crate::winapi::NtWriteVirtualMemoryHellsGate;
 pub trait MemoryView {
     fn read<T: Copy>(&self, address: u64) -> Result<T, ExpError>;
     fn write<T: Copy>(&self, address: u64, value: T) -> Result<(), ExpError>;
+
+    fn read_bytes(&self, address: u64, size: usize) -> Result<Vec<u8>, ExpError> {
+        (0..size)
+            .map(|i| self.read::<u8>(address + i as u64))
+            .collect()
+    }
 }
 
 pub struct LocalMemory;
