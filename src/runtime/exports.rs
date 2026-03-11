@@ -12,7 +12,6 @@ use byteorder::LittleEndian;
 use byteorder::ReadBytesExt;
 use log::debug;
 use log::warn;
-use std::ffi::c_char;
 
 impl PE64Runtime<LocalMemory> {
     pub fn get_syscall_num(&self, exported_func: ParsedExportFunction) -> Result<u16, ExpError> {

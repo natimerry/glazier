@@ -51,7 +51,7 @@ impl PE64Runtime<RemoteMemory> {
 
         // Get basic process info to find PEB base
         let mut process_info: PROCESS_BASIC_INFORMATION = unsafe { core::mem::zeroed() };
-        let status = unsafe {
+        let _status = unsafe {
             NtQueryInformationProcess(
                 handle,
                 0,
@@ -69,7 +69,6 @@ impl PE64Runtime<RemoteMemory> {
         let ldr = memory.read::<PEB_LDR_DATA>(ldr_ptr)?;
 
         // Walk InMemoryOrderModuleList to get first entry (the main module)
-        let head_addr = ldr_ptr + offset_of!(PEB_LDR_DATA, InMemoryOrderModuleList) as u64;
         let first_flink = ldr.InMemoryOrderModuleList.Flink as u64;
 
         let entry_addr = first_flink - offset_of!(LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) as u64;
