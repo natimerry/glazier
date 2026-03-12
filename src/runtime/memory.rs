@@ -1,7 +1,11 @@
 use crate::ExpError;
 use crate::winapi::HANDLE;
+use crate::winapi::LPVOID;
+use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::NtReadVirtualMemoryHellsGate;
 use crate::winapi::NtWriteVirtualMemoryHellsGate;
+use crate::winapi::VirtualQuery;
+use crate::winapi::VirtualQueryEx;
 
 pub trait MemoryView {
     fn read<T: Copy>(&self, address: u64) -> Result<T, ExpError>;
@@ -11,6 +15,40 @@ pub trait MemoryView {
         (0..size)
             .map(|i| self.read::<u8>(address + i as u64))
             .collect()
+    }
+
+    fn write_bytes(&self, address: u64, bytes: &[u8]) -> Result<(), ExpError> {
+        bytes
+            .iter()
+            .enumerate()
+            .try_for_each(|(i, &b)| self.write::<u8>(address + i as u64, b))
+    }
+
+    fn get_handle(&self) -> Option<HANDLE>;
+
+    fn virtual_query(&self, addr: LPVOID, mbi: &mut MEMORY_BASIC_INFORMATION) -> u64 {
+        unsafe {
+            let size = if let Some(handle) = self.get_handle() {
+                VirtualQueryEx(
+                    handle,
+                    addr as LPVOID,
+                    mbi,
+                    size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+                )
+            } else {
+                VirtualQuery(
+                    addr as LPVOID,
+                    mbi,
+                    size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+                )
+            };
+            size
+        }
+    }
+
+    fn copy_non_overlapping(&self, copysrc: u64, copydest: u64, copysize: usize) {
+        let bytes = &self.read_bytes(copysrc, copysize)?;
+        &self.write_bytes(copydest, &bytes)?;
     }
 }
 
@@ -40,6 +78,8 @@ impl MemoryView for LocalMemory {
             Ok(())
         }
     }
+
+    fn get_handle(&self) -> Option<HANDLE> { None }
 }
 
 impl MemoryView for RemoteMemory {
@@ -83,4 +123,6 @@ impl MemoryView for RemoteMemory {
             Ok(())
         }
     }
+
+    fn get_handle(&self) -> Option<HANDLE> { return Some(self.handle); }
 }
