@@ -171,7 +171,7 @@ fn generate_winapi_bindings(out_dir: &str) {
             #include <winuser.h>
             "#,
         )
-        .clang_arg(format!("-I./phnt"))
+        .clang_arg("-I./phnt".to_string())
         // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um")
         // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared")
         // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt")
@@ -291,10 +291,10 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
         if let Item::ForeignMod(foreign_mod) = item {
             for foreign_item in foreign_mod.items {
                 if let ForeignItem::Fn(func) = foreign_item {
-                    if let Some(max) = limit {
-                        if processed >= max {
-                            break 'outer;
-                        }
+                    if let Some(max) = limit
+                        && processed >= max
+                    {
+                        break 'outer;
                     }
 
                     processed += 1;
@@ -570,7 +570,7 @@ fn generate_single_wrapper(
     writeln!(output)?;
     writeln!(output, "    INIT.call_once(|| {{")?;
 
-    if !(dll.to_uppercase() == "KERNEL32.DLL") {
+    if dll.to_uppercase() != "KERNEL32.DLL" {
         writeln!(
             output,
             "        let _ = LoadLibraryW((to_wide(\"{}\")).as_ptr());",
@@ -686,7 +686,7 @@ fn type_to_string(ty: &syn::Type) -> String {
             format!(
                 "[{}; {}]",
                 type_to_string(&type_array.elem),
-                quote::quote!(#type_array.len).to_string()
+                quote::quote!(#type_array.len)
             )
         }
         syn::Type::Tuple(type_tuple) => {
