@@ -58,8 +58,8 @@ pub trait MemoryView {
         copydest: u64,
         copysize: usize,
     ) -> Result<(), ExpError> {
-        let bytes = &self.read_bytes(copysrc, copysize)?;
-        &self.write_bytes(copydest, &bytes)?;
+        let bytes = self.read_bytes(copysrc, copysize)?;
+        self.write_bytes(copydest, &bytes)?;
         Ok(())
     }
 
