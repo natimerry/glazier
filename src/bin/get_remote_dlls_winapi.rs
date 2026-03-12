@@ -3,9 +3,7 @@ use libwinexploit::runtime::memory::MemoryView;
 use libwinexploit::runtime::memory::RemoteMemory;
 use libwinexploit::runtime::pe64_runtime::PE64Runtime;
 use libwinexploit::runtime::process::Process;
-use libwinexploit::winapi::HANDLE;
 use windows_sys::Win32::Foundation::CloseHandle;
-use windows_sys::Win32::System::Threading::OpenProcess;
 use windows_sys::Win32::System::Threading::PROCESS_ALL_ACCESS;
 
 fn resolve_export(pe: &PE64Runtime<RemoteMemory>, name: &str) -> Option<u64> {
@@ -58,9 +56,7 @@ fn resolve_export(pe: &PE64Runtime<RemoteMemory>, name: &str) -> Option<u64> {
 
 fn analyse_process(proc: &Process) {
     let handle = proc.handle;
-    let pe = unsafe {
-        PE64Runtime::<RemoteMemory>::from_handle(handle).expect("Failed to build PE64Runtime")
-    };
+    let pe = PE64Runtime::<RemoteMemory>::from_handle(handle).expect("Failed to build PE64Runtime");
 
     println!("module_base:   {:#x}", pe.module_base);
     println!("image_size:    {:#x}", pe.image_size);

@@ -9,7 +9,6 @@ use crate::winapi::FlushInstructionCache;
 use crate::winapi::GetCurrentProcess;
 use crate::winapi::GetSystemInfo;
 use crate::winapi::HANDLE;
-use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::SYSTEM_INFO;
@@ -175,7 +174,7 @@ unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut Memory
         } as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(m, new_block);
+            initialize_block(m, new_block).unwrap();
             return new_block;
         }
     }
@@ -195,7 +194,7 @@ unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut Memory
             as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(m, new_block);
+            initialize_block(m, new_block).unwrap();
             return new_block;
         }
     }
@@ -306,7 +305,8 @@ pub unsafe fn allocate_buffer<M: MemoryView>(origin: *mut u8, m: &M) -> *mut u8 
     m.write::<MemoryBlock>(block as u64, b).unwrap();
 
     // Debug fill
-    m.write_bytes(slot as u64, &[0xCC; MEMORY_SLOT_SIZE]);
+    m.write_bytes(slot as u64, &[0xCC; MEMORY_SLOT_SIZE])
+        .unwrap();
 
     slot as *mut u8
 }
@@ -419,7 +419,8 @@ impl HookEntry {
             }
         } else {
             // Disable: restore original bytes from backup
-            m.copy_non_overlapping(self.backup.as_ptr() as u64, patch_target as u64, patch_size);
+            m.copy_non_overlapping(self.backup.as_ptr() as u64, patch_target as u64, patch_size)
+                .unwrap();
         }
 
         m.virtual_protect(patch_target, patch_size, old_protect, &mut old_protect);
