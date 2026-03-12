@@ -3,17 +3,20 @@ pub mod pattern;
 use crate::ExpError;
 use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
+use crate::runtime::memory::MemoryView;
 use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::winapi::FlushInstructionCache;
 use crate::winapi::GetCurrentProcess;
 use crate::winapi::GetSystemInfo;
+use crate::winapi::HANDLE;
 use crate::winapi::LPBYTE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::SYSTEM_INFO;
 use crate::winapi::VirtualAlloc;
-use crate::winapi::VirtualProtect;
+use crate::winapi::VirtualAllocEx;
 use crate::winapi::VirtualQuery;
+use crate::winapi::VirtualQueryEx;
 use log::trace;
 use std::ffi::c_void;
 use std::ptr::null_mut;
@@ -64,12 +67,15 @@ pub enum HookError {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
+
 struct MemorySlot {
     next: *mut MemorySlot,
     // trampoline bytes follow
 }
 
 #[repr(C)]
+#[derive(Copy, Clone)]
 struct MemoryBlock {
     next: *mut MemoryBlock,
     free: *mut MemorySlot,
@@ -82,19 +88,27 @@ const MAX_MEMORY_RANGE: usize = 0x2000_0000; // 512MB
 
 static mut MEMORY_BLOCKS: *mut MemoryBlock = null_mut();
 
-unsafe fn check_address_executable(address: *mut u8) -> bool {
+unsafe fn check_address_executable(address: *mut u8, handle: Option<HANDLE>) -> bool {
     let mut mi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
-
-    VirtualQuery(
-        address as LPVOID,
-        &mut mi as *mut _,
-        size_of::<MEMORY_BASIC_INFORMATION>() as u64,
-    );
+    if let Some(handle) = handle {
+        VirtualQueryEx(
+            handle,
+            address as LPVOID,
+            &mut mi as *mut _,
+            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+        );
+    } else {
+        VirtualQuery(
+            address as LPVOID,
+            &mut mi as *mut _,
+            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+        );
+    }
 
     return mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0;
 }
 
-unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
+unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut MemoryBlock {
     let mut si: SYSTEM_INFO = std::mem::zeroed();
     GetSystemInfo(&mut si);
 
@@ -118,11 +132,15 @@ unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
     while !block.is_null() {
         let addr = block as usize;
         if addr >= min_addr && addr < max_addr {
-            if !(*block).free.is_null() {
+            if !(m.read::<MemoryBlock>(block as u64))
+                .expect("Failed to read memory block")
+                .free
+                .is_null()
+            {
                 return block;
             }
         }
-        block = (*block).next;
+        block = m.read::<MemoryBlock>(block as u64).unwrap().next;
     }
 
     // Try allocate new block below origin
@@ -130,21 +148,31 @@ unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
 
     while alloc_addr >= min_addr {
         alloc_addr =
-            find_prev_free_region(alloc_addr, min_addr, si.dwAllocationGranularity as usize);
+            find_prev_free_region(alloc_addr, min_addr, si.dwAllocationGranularity as usize, m);
 
         if alloc_addr == 0 {
             break;
         }
 
-        let new_block = VirtualAlloc(
-            alloc_addr as LPVOID,
-            MEMORY_BLOCK_SIZE as u64,
-            0x3000, // MEM_COMMIT | MEM_RESERVE
-            0x40,   // PAGE_EXECUTE_READWRITE
-        ) as *mut MemoryBlock;
+        let new_block = if let Some(handle) = m.get_handle() {
+            VirtualAllocEx(
+                handle,
+                alloc_addr as LPVOID,
+                MEMORY_BLOCK_SIZE as u64,
+                0x3000, // MEM_COMMIT | MEM_RESERVE
+                0x40,   // PAGE_EXECUTE_READWRITE
+            )
+        } else {
+            VirtualAlloc(
+                alloc_addr as LPVOID,
+                MEMORY_BLOCK_SIZE as u64,
+                0x3000, // MEM_COMMIT | MEM_RESERVE
+                0x40,   // PAGE_EXECUTE_READWRITE
+            )
+        } as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(new_block);
+            initialize_block(m, new_block);
             return new_block;
         }
     }
@@ -154,7 +182,7 @@ unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
 
     while alloc_addr <= max_addr {
         alloc_addr =
-            find_next_free_region(alloc_addr, max_addr, si.dwAllocationGranularity as usize);
+            find_next_free_region(alloc_addr, max_addr, si.dwAllocationGranularity as usize, m);
 
         if alloc_addr == 0 {
             break;
@@ -164,7 +192,7 @@ unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
             as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(new_block);
+            initialize_block(m, new_block);
             return new_block;
         }
     }
@@ -172,35 +200,42 @@ unsafe fn get_memory_block(origin: *mut u8) -> *mut MemoryBlock {
     null_mut()
 }
 
-unsafe fn initialize_block(block: *mut MemoryBlock) {
-    (*block).used_count = 0;
-    (*block).free = null_mut();
+unsafe fn initialize_block<M: MemoryView>(m: &M, block: *mut MemoryBlock) -> Result<(), ExpError> {
+    let mut b = m.read::<MemoryBlock>(block as u64)?;
+    b.used_count = 0;
+    b.free = null_mut();
 
     let mut slot = (block as *mut u8).add(size_of::<MemoryBlock>()) as *mut MemorySlot;
-
     let end = (block as usize) + MEMORY_BLOCK_SIZE;
 
     while (slot as usize) + MEMORY_SLOT_SIZE <= end {
-        (*slot).next = (*block).free;
-        (*block).free = slot;
+        let mut s = m.read::<MemorySlot>(slot as u64)?;
+        s.next = b.free;
+        m.write::<MemorySlot>(slot as u64, s)?;
+
+        b.free = slot;
         slot = (slot as *mut u8).add(MEMORY_SLOT_SIZE) as *mut MemorySlot;
     }
 
-    (*block).next = MEMORY_BLOCKS;
+    b.next = m.read::<*mut MemoryBlock>(std::ptr::addr_of!(MEMORY_BLOCKS) as u64)?;
     MEMORY_BLOCKS = block;
+
+    m.write::<MemoryBlock>(block as u64, b)?;
+    Ok(())
 }
 
-unsafe fn find_prev_free_region(mut addr: usize, min: usize, granularity: usize) -> usize {
+unsafe fn find_prev_free_region<M: MemoryView>(
+    mut addr: usize,
+    min: usize,
+    granularity: usize,
+    m: &M,
+) -> usize {
     while addr > min {
         addr = addr.saturating_sub(granularity); // always step back
 
         let mut mbi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
-        if VirtualQuery(
-            addr as LPVOID,
-            &mut mbi,
-            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
-        ) == 0
-        {
+
+        if m.virtual_query(addr as LPVOID, &mut mbi) == 0 {
             break;
         }
 
@@ -219,15 +254,15 @@ unsafe fn find_prev_free_region(mut addr: usize, min: usize, granularity: usize)
     0
 }
 
-unsafe fn find_next_free_region(mut addr: usize, max: usize, granularity: usize) -> usize {
+unsafe fn find_next_free_region<M: MemoryView>(
+    mut addr: usize,
+    max: usize,
+    granularity: usize,
+    m: &M,
+) -> usize {
     while addr < max {
         let mut mbi: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
-        if VirtualQuery(
-            addr as LPVOID,
-            &mut mbi,
-            size_of::<MEMORY_BASIC_INFORMATION>() as u64,
-        ) == 0
-        {
+        if m.virtual_query(addr as LPVOID, &mut mbi) == 0 {
             break;
         }
 
@@ -248,8 +283,8 @@ unsafe fn find_next_free_region(mut addr: usize, max: usize, granularity: usize)
     0
 }
 
-pub unsafe fn allocate_buffer(origin: *mut u8) -> *mut u8 {
-    let block = get_memory_block(origin);
+pub unsafe fn allocate_buffer<M: MemoryView>(origin: *mut u8, m: &M) -> *mut u8 {
+    let block = get_memory_block(origin, m);
     if block.is_null() {
         return null_mut();
     }
@@ -259,17 +294,23 @@ pub unsafe fn allocate_buffer(origin: *mut u8) -> *mut u8 {
         return null_mut();
     }
 
-    (*block).free = (*slot).next;
-    (*block).used_count += 1;
+    let mut b = m.read::<MemoryBlock>(block as u64).unwrap();
+    let s = m.read::<MemorySlot>(b.free as u64).unwrap();
+
+    b.free = s.next;
+    b.used_count += 1;
+
+    m.write::<MemoryBlock>(block as u64, b).unwrap();
 
     // Debug fill
-    std::ptr::write_bytes(slot as *mut u8, 0xCC, MEMORY_SLOT_SIZE);
+    m.write_bytes(slot as u64, &[0xCC; MEMORY_SLOT_SIZE]);
 
     slot as *mut u8
 }
 
 impl HookEntry {
     /// hook a loaded winapi function
+    /// this only works for currently loaded modulse
     pub fn from_winapi_function(
         func_name: impl ToString,
         module_name: Option<impl ToString>,
@@ -282,25 +323,28 @@ impl HookEntry {
 
         let runtime_addr = runtime.find_export(func_name.to_string())?;
 
-        Self::new(runtime_addr.func_addr as *mut u8, detour)
+        Self::new(runtime_addr.func_addr as *mut u8, detour, runtime.memory)
     }
 
-    pub fn new(target: *mut u8, detour: *mut u8) -> Result<Self, HookError> {
+    pub fn new(target: *mut u8, detour: *mut u8, m: impl MemoryView) -> Result<Self, HookError> {
         if target.is_null() || detour.is_null() {
             return Err(HookError::InvalidPointer);
         }
 
+        let handle = m.get_handle();
         unsafe {
-            if !check_address_executable(target) || !check_address_executable(detour) {
+            if !check_address_executable(target, handle)
+                || !check_address_executable(detour, handle)
+            {
                 return Err(HookError::InvalidPointer);
             }
 
-            let buffer_addr = allocate_buffer(target);
+            let buffer_addr = allocate_buffer(target, &m);
             if buffer_addr.is_null() {
                 return Err(HookError::AllocationFailed);
             }
 
-            let ct = Trampoline::new(target, detour, buffer_addr)?;
+            let ct = Trampoline::new(target, detour, buffer_addr, &m)?;
             let mut hook = HookEntry {
                 target,
                 detour: ct.relay,
@@ -323,13 +367,13 @@ impl HookEntry {
 
             hook.backup.resize(size, 0);
 
-            let src_slice = std::slice::from_raw_parts(src, size);
-            hook.backup.copy_from_slice(src_slice);
+            hook.backup = m.read_bytes(src as u64, size).unwrap().try_into().unwrap();
+
             return Ok(hook);
         }
     }
 
-    pub unsafe fn toggle(&mut self) -> Result<(), HookError> {
+    pub unsafe fn toggle<M: MemoryView>(&mut self, m: &M) -> Result<(), HookError> {
         let mut old_protect = 0;
         let size_rel = size_of::<JmpRel>();
         let size_short = size_of::<JmpRelShort>();
@@ -339,49 +383,40 @@ impl HookEntry {
             patch_target = patch_target.sub(size_rel);
             patch_size += size_short;
         }
-        if VirtualProtect(
-            patch_target as LPVOID,
-            patch_size as u64,
-            0x40,
-            &mut old_protect,
-        ) == 0
-        {
+        if m.virtual_protect(patch_target, patch_size, 0x40, &mut old_protect) == 0 {
             return Err(HookError::NonExecutableAddress);
         }
 
         if !self.enabled {
             // Enable: write JMP_REL at patch_target pointing to detour
-            let jmp = &mut *(patch_target as *mut JmpRel);
+            let mut jmp = m.read::<JmpRel>(patch_target as u64)?;
             jmp.opcode = 0xE9;
 
             let displacement = (self.detour as isize) - (patch_target as isize + size_rel as isize);
             if displacement < i32::MIN as isize || displacement > i32::MAX as isize {
                 // This hook is too far away for a 0xE9 jump!
-                // You MUST use a 14-byte absolute jump if this happens.
                 return Err(HookError::TrampolineError);
             }
             jmp.operand = displacement as i32;
 
+            m.write::<JmpRel>(patch_target as u64, jmp)?;
+
             if self.hot_patch {
                 // Write short jump at target pointing back to patch_target (the JMP_REL)
-                let short_jmp = &mut *(self.target as *mut JmpRelShort);
+                let mut short_jmp = m.read::<JmpRelShort>(self.target as u64)?;
                 short_jmp.opcode = 0xEB;
                 short_jmp.operand = (0i32 - (size_short + size_rel) as i32) as i8;
+                m.write::<JmpRelShort>(self.target as u64, short_jmp)?;
             }
         } else {
             // Disable: restore original bytes from backup
-            std::ptr::copy_nonoverlapping(self.backup.as_ptr(), patch_target, patch_size);
+            m.copy_non_overlapping(self.backup.as_ptr() as u64, patch_target as u64, patch_size);
         }
 
-        VirtualProtect(
-            patch_target as LPVOID,
-            patch_size as u64,
-            old_protect,
-            &mut old_protect,
-        );
+        m.virtual_protect(patch_target, patch_size, old_protect, &mut old_protect);
 
         FlushInstructionCache(
-            GetCurrentProcess(),
+            m.get_handle().unwrap_or(GetCurrentProcess()),
             patch_target as LPVOID,
             patch_size as u64,
         );
@@ -394,6 +429,7 @@ impl HookEntry {
     pub fn original(&self) -> *mut u8 { self.trampoline }
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct JmpAbs {
     opcode0: u8, // FF25 00000000: JMP [+6]
     opcode1: u8,
@@ -401,6 +437,7 @@ struct JmpAbs {
     address: u64,
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct CallAbs {
     opcode0: u8, // FF15 00000002: CALL [+6]
     opcode1: u8,
@@ -410,6 +447,7 @@ struct CallAbs {
     address: u64, // Absolute destination address
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct JccAbs {
     opcode: u8, // 7* 0E:         J** +16
     dummy0: u8,
@@ -419,6 +457,7 @@ struct JccAbs {
     address: u64, // Absolute destination address
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct Trampoline {
     target: *mut u8,
     detour: *mut u8,
@@ -430,11 +469,13 @@ struct Trampoline {
     new_ips: [u8; 8],
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct JmpRel {
     opcode: u8,   // E9/E8 xxxxxxxx: JMP/CALL +5+xxxxxxxx
     operand: i32, // Relative destination address
 }
 #[repr(C, packed)]
+#[derive(Copy, Clone)]
 struct JmpRelShort {
     opcode: u8,  // EB xx: JMP +2+xx
     operand: i8, // Relative destination address
@@ -442,10 +483,11 @@ struct JmpRelShort {
 
 #[allow(unused)]
 impl Trampoline {
-    pub unsafe fn new(
+    pub unsafe fn new<M: MemoryView>(
         target: *mut u8,
         detour: *mut u8,
         trampoline: *mut u8,
+        m: &M,
     ) -> Result<Self, HookError> {
         let mut call = CallAbs {
             opcode0: 0xFF,
@@ -498,7 +540,7 @@ impl Trampoline {
             let old_inst = ct.target.offset(old_pos as isize);
             let new_inst = ct.trampoline.offset(new_pos as isize);
 
-            copysize = hde64_disasm(old_inst as *const c_void, &mut hs);
+            copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m);
 
             trace!(
                 "old_pos={} old_inst=0x{:x} opcode={:02x} modrm={:02x} len={} copySize={}",
@@ -528,10 +570,16 @@ impl Trampoline {
             } else if (hs.modrm & 0xC7) == 0x05 {
                 println!("RIP RELATIVE OVERRIDE");
                 // Instructions using RIP relative addressing. (ModR/M = 00???101B)
-                std::ptr::copy_nonoverlapping(
-                    old_inst as *const u8,
-                    inst_buffer.as_mut_ptr(),
-                    hs.len as usize, // Use hs.len, not copysize
+                // std::ptr::copy_nonoverlapping(
+                //     old_inst as *const u8,
+                //     inst_buffer.as_mut_ptr(),
+                //     hs.len as usize, // Use hs.len, not copysize
+                // );
+
+                m.copy_non_overlapping(
+                    old_inst as u64,
+                    inst_buffer.as_mut_ptr() as u64,
+                    hs.len as usize,
                 );
 
                 copysrc = inst_buffer.as_mut_ptr() as LPVOID;
@@ -543,9 +591,8 @@ impl Trampoline {
                     .as_mut_ptr()
                     .offset(hs.len as isize)
                     .offset(-disp_size)
-                    .offset(-4) as *mut u32;
+                    .offset(-4) as u64;
 
-                // Compute delta exactly as MinHook: (old_target) - (new_inst + hs.len)
                 let old_target = old_inst
                     .offset(hs.len as isize)
                     .offset(hs.disp.disp32 as isize);
@@ -556,7 +603,7 @@ impl Trampoline {
                     return Err(HookError::TrampolineError);
                 }
 
-                std::ptr::write_unaligned(rel_addr, delta as i32 as u32);
+                m.write::<u32>(rel_addr, delta as i32 as u32)?;
 
                 // Complete the function if JMP (FF /4).
                 if hs.opcode == 0xFF && hs.modrm_reg == 4 {
@@ -660,9 +707,9 @@ impl Trampoline {
             ct.new_ips[ct.num_ips as usize] = new_pos;
             ct.num_ips += 1;
 
-            std::ptr::copy_nonoverlapping(
-                copysrc as *const u8,
-                ct.trampoline.add(new_pos as usize),
+            m.copy_non_overlapping(
+                copysrc as u64,
+                ct.trampoline.add(new_pos as usize) as u64,
                 copysize as usize,
             );
 
@@ -677,30 +724,36 @@ impl Trampoline {
         //
         if (old_pos as usize) < size_of::<JmpRel>()
             && !Self::is_code_padding(
-                ct.target.add(old_pos as usize),
+                m,
+                ct.target.add(old_pos as usize) as u64,
                 (size_of::<JmpRel>() as u64) - old_pos as u64,
-            )
+            )?
         {
             // Is there enough place for a short jump?
             //
             if (old_pos as usize) < size_of::<JmpRelShort>()
                 && !Self::is_code_padding(
-                    ct.target.add(old_pos as usize),
+                    m,
+                    ct.target.add(old_pos as usize) as u64,
                     (size_of::<JmpRelShort>() as u64) - old_pos as u64,
-                )
+                )?
             {
                 return Err(HookError::TrampolineError);
             }
 
             // Can we place the long jump above the function?
-            if !check_address_executable(ct.target.sub(size_of::<JmpRel>() as usize)) {
+            if !check_address_executable(
+                ct.target.sub(size_of::<JmpRel>() as usize),
+                m.get_handle(),
+            ) {
                 return Err(HookError::TrampolineError);
             }
 
             if !Self::is_code_padding(
-                ct.target.sub(size_of::<JmpRel>() as usize),
+                m,
+                ct.target.sub(size_of::<JmpRel>() as usize) as u64,
                 size_of::<JmpRel>() as u64,
-            ) {
+            )? {
                 return Err(HookError::TrampolineError);
             }
 
@@ -710,26 +763,34 @@ impl Trampoline {
         jmp.address = ct.detour as u64;
         ct.relay = ct.trampoline.add(new_pos as usize);
 
-        std::ptr::copy_nonoverlapping(
-            &jmp as *const _ as *const u8,
-            ct.relay,
+        // std::ptr::copy_nonoverlapping(
+        //     &jmp as *const _ as *const u8,
+        //     ct.relay,
+        //     std::mem::size_of_val(&jmp),
+        // );
+        //
+        m.copy_non_overlapping(
+            &jmp as *const _ as u64,
+            ct.relay as u64,
             std::mem::size_of_val(&jmp),
         );
 
         return Ok(ct);
     }
 
-    unsafe fn is_code_padding(inst: LPBYTE, size: u64) -> bool {
-        if *inst != 0x0 && *inst != 0x90 && *inst != 0xCC {
-            return false;
+    fn is_code_padding<M: MemoryView>(m: &M, inst: u64, size: u64) -> Result<bool, ExpError> {
+        let first = m.read::<u8>(inst)?;
+
+        if first != 0x0 && first != 0x90 && first != 0xCC {
+            return Ok(false);
         }
 
         for i in 1..size {
-            if *(inst.add(i as usize)) != *inst {
-                return false;
+            if m.read::<u8>(inst + i)? != first {
+                return Ok(false);
             }
         }
 
-        return true;
+        Ok(true)
     }
 }

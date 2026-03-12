@@ -1,9 +1,15 @@
 use crate::ExpError;
+use crate::winapi::BOOL;
+use crate::winapi::DWORD;
 use crate::winapi::HANDLE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::NtReadVirtualMemoryHellsGate;
 use crate::winapi::NtWriteVirtualMemoryHellsGate;
+use crate::winapi::PDWORD;
+use crate::winapi::SIZE_T;
+use crate::winapi::VirtualProtect;
+use crate::winapi::VirtualProtectEx;
 use crate::winapi::VirtualQuery;
 use crate::winapi::VirtualQueryEx;
 
@@ -46,9 +52,43 @@ pub trait MemoryView {
         }
     }
 
-    fn copy_non_overlapping(&self, copysrc: u64, copydest: u64, copysize: usize) {
+    fn copy_non_overlapping(
+        &self,
+        copysrc: u64,
+        copydest: u64,
+        copysize: usize,
+    ) -> Result<(), ExpError> {
         let bytes = &self.read_bytes(copysrc, copysize)?;
         &self.write_bytes(copydest, &bytes)?;
+        Ok(())
+    }
+
+    fn virtual_protect(
+        &self,
+        address: *mut u8,
+        size: usize,
+        new_protect: DWORD,
+        p_old_protect: PDWORD,
+    ) -> BOOL {
+        unsafe {
+            let res = if let Some(handle) = self.get_handle() {
+                VirtualProtectEx(
+                    handle,
+                    address as *mut _,
+                    size as SIZE_T,
+                    new_protect,
+                    p_old_protect,
+                )
+            } else {
+                VirtualProtect(
+                    address as *mut _,
+                    size as SIZE_T,
+                    new_protect,
+                    p_old_protect,
+                )
+            };
+            res
+        }
     }
 }
 
@@ -56,6 +96,9 @@ pub struct LocalMemory;
 
 pub struct RemoteMemory {
     pub handle: HANDLE,
+}
+impl RemoteMemory {
+    pub fn from_handle(handle: HANDLE) -> Self { Self { handle } }
 }
 
 impl MemoryView for LocalMemory {

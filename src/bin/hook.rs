@@ -1,4 +1,5 @@
 use libwinexploit::hooking::HookEntry;
+use libwinexploit::runtime::memory::LocalMemory;
 use libwinexploit::winapi::GetProcAddress;
 use libwinexploit::winapi::LoadLibraryW;
 use libwinexploit::winapi::MessageBoxW;
@@ -69,16 +70,19 @@ fn main() {
         dump_bytes("Trampoline bytes (64)", hook.original() as *const u8, 64);
         dump_bytes("MessageBoxW bytes (16)", target as *const u8, 16);
 
+        let m = LocalMemory {};
+        let m = &m;
+
         // Enable → hooked call
-        hook.toggle().expect("Failed to enable hook");
+        hook.toggle(m).expect("Failed to enable hook");
         call_msgbox("Hello from Rust!", "PE Loader"); // should show hooked text
 
         // Disable → original call
-        hook.toggle().expect("Failed to disable hook");
+        hook.toggle(m).expect("Failed to disable hook");
         call_msgbox("Hello from Rust!", "PE Loader"); // should show original text
 
         // Re-enable → hooked again
-        hook.toggle().expect("Failed to re-enable hook");
+        hook.toggle(m).expect("Failed to re-enable hook");
         call_msgbox("Hello from Rust!", "PE Loader");
     }
 }

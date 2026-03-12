@@ -1,3 +1,4 @@
+use crate::runtime::memory::MemoryView;
 use std::ffi::c_void;
 
 pub const HDE64_TABLE: [u8; 515] = [
@@ -165,20 +166,20 @@ impl Default for hde64s {
 }
 
 #[inline(always)]
-unsafe fn read_u8(p: *const u8) -> u8 { p.read_unaligned() }
+fn read_u8<M: MemoryView>(m: &M, p: u64) -> u8 { m.read::<u8>(p).unwrap() }
 
 #[inline(always)]
-unsafe fn read_u16(p: *const u8) -> u16 { (p as *const u16).read_unaligned() }
+fn read_u16<M: MemoryView>(m: &M, p: u64) -> u16 { m.read::<u16>(p).unwrap() }
 
 #[inline(always)]
-unsafe fn read_u32(p: *const u8) -> u32 { (p as *const u32).read_unaligned() }
+fn read_u32<M: MemoryView>(m: &M, p: u64) -> u32 { m.read::<u32>(p).unwrap() }
 
 #[inline(always)]
-unsafe fn read_u64(p: *const u8) -> u64 { (p as *const u64).read_unaligned() }
+fn read_u64<M: MemoryView>(m: &M, p: u64) -> u64 { m.read::<u64>(p).unwrap() }
 
 #[allow(unused)]
 /// Disassemble one x86-64 instruction.
-pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
+pub unsafe fn hde64_disasm<M: MemoryView>(code: *const c_void, hs: &mut hde64s, m: &M) -> u32 {
     // Zero the output struct
     *hs = hde64s::default();
 
@@ -199,7 +200,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
     // pointer arithmetic on `ht`).
     let mut ht_base: usize = 0;
     'prefix: for _ in 0..16 {
-        c = read_u8(p);
+        c = read_u8(m, p as u64);
         p = p.add(1);
 
         match c {
@@ -245,7 +246,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
         hs.flags |= F_PREFIX_REX;
 
         hs.rex_w = (c & 0xf) >> 3;
-        if hs.rex_w != 0 && (read_u8(p) & 0xf8) == 0xb8 {
+        if hs.rex_w != 0 && (read_u8(m, p as u64) & 0xf8) == 0xb8 {
             op64 += 1;
         }
 
@@ -253,7 +254,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
         hs.rex_x = (c & 3) >> 1;
         hs.rex_b = c & 1;
 
-        c = read_u8(p);
+        c = read_u8(m, p as u64);
         p = p.add(1);
 
         if (c & 0xf0) == 0x40 {
@@ -268,7 +269,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
 
         if c == 0x0f {
             // Two-byte opcode escape
-            c = read_u8(p);
+            c = read_u8(m, p as u64);
             p = p.add(1);
             hs.opcode2 = c;
             ht_base = DELTA_OPCODES;
@@ -299,7 +300,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
     let mut x: u8 = 0;
     if cflags & C_GROUP != 0 {
         let idx = (cflags & 0x7f) as usize;
-        let t = read_u16(&ht[idx] as *const u8);
+        let t = read_u16(m, &ht[idx] as *const u8 as u64);
         cflags = t as u8;
         x = (t >> 8) as u8;
     }
@@ -318,7 +319,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
 
     if cflags & C_MODRM != 0 {
         hs.flags |= F_MODRM;
-        c = read_u8(p);
+        c = read_u8(m, p as u64);
         p = p.add(1);
         hs.modrm = c;
 
@@ -488,7 +489,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
         }
 
         // Read SIB / displacement
-        c = read_u8(p); // SIB candidate (re-read; p not yet advanced past ModRM)
+        c = read_u8(m, p as u64); // SIB candidate (re-read; p not yet advanced past ModRM as u64)
 
         // Extend cflags for group F6/F7 with reg 0 or 1
         if m_reg <= 1 {
@@ -538,15 +539,15 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
         match disp_size {
             1 => {
                 hs.flags |= F_DISP8;
-                hs.disp.disp8 = read_u8(p);
+                hs.disp.disp8 = read_u8(m, p as u64);
             }
             2 => {
                 hs.flags |= F_DISP16;
-                hs.disp.disp16 = read_u16(p);
+                hs.disp.disp16 = read_u16(m, p as u64);
             }
             4 => {
                 hs.flags |= F_DISP32;
-                hs.disp.disp32 = read_u32(p);
+                hs.disp.disp32 = read_u32(m, p as u64);
             }
             _ => {}
         }
@@ -563,7 +564,7 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
         if cflags & C_REL32 != 0 {
             if pref & PRE_66 != 0 {
                 hs.flags |= F_IMM16 | F_RELATIVE;
-                hs.imm.imm16 = read_u16(p);
+                hs.imm.imm16 = read_u16(m, p as u64);
                 p = p.add(2);
                 // goto disasm_done
                 return finalize(hs, code as *const u8, p);
@@ -571,40 +572,40 @@ pub unsafe fn hde64_disasm(code: *const c_void, hs: &mut hde64s) -> u32 {
             // goto rel32_ok  (handled below after this block)
         } else if op64 != 0 {
             hs.flags |= F_IMM64;
-            hs.imm.imm64 = read_u64(p);
+            hs.imm.imm64 = read_u64(m, p as u64);
             p = p.add(8);
         } else if pref & PRE_66 == 0 {
             hs.flags |= F_IMM32;
-            hs.imm.imm32 = read_u32(p);
+            hs.imm.imm32 = read_u32(m, p as u64);
             p = p.add(4);
         } else {
             // imm16_ok
             hs.flags |= F_IMM16;
-            hs.imm.imm16 = read_u16(p);
+            hs.imm.imm16 = read_u16(m, p as u64);
             p = p.add(2);
         }
     }
 
     if cflags & C_IMM16 != 0 {
         hs.flags |= F_IMM16;
-        hs.imm.imm16 = read_u16(p);
+        hs.imm.imm16 = read_u16(m, p as u64);
         p = p.add(2);
     }
 
     if cflags & C_IMM8 != 0 {
         hs.flags |= F_IMM8;
-        hs.imm.imm8 = read_u8(p);
+        hs.imm.imm8 = read_u8(m, p as u64);
         p = p.add(1);
     }
 
     if cflags & C_REL32 != 0 {
         // rel32_ok:
         hs.flags |= F_IMM32 | F_RELATIVE;
-        hs.imm.imm32 = read_u32(p);
+        hs.imm.imm32 = read_u32(m, p as u64);
         p = p.add(4);
     } else if cflags & C_REL8 != 0 {
         hs.flags |= F_IMM8 | F_RELATIVE;
-        hs.imm.imm8 = read_u8(p);
+        hs.imm.imm8 = read_u8(m, p as u64);
         p = p.add(1);
     }
 

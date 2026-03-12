@@ -1,6 +1,7 @@
 use libwinexploit::hooking::HookEntry;
 use libwinexploit::hooking::pattern::Pattern;
 use libwinexploit::hooking::pattern::PatternScanOption;
+use libwinexploit::runtime::memory::LocalMemory;
 use libwinexploit::winapi::LoadLibraryW;
 use libwinexploit::winapi::MessageBoxW;
 use std::ffi::c_void;
@@ -40,11 +41,12 @@ fn main() {
         let base = module as *const u8;
         let size = 0x100000;
 
-
         let mut pattern = Pattern::from("48 83 EC 38 45 33 DB ?? 39 1D EA 18 ?? 00 74 25").unwrap();
 
+        let memory_view = LocalMemory {};
+
         let results = pattern
-            .scan(base, size, PatternScanOption::Begin)
+            .scan(memory_view, base, size, PatternScanOption::Begin)
             .expect("Pattern not found");
 
         let target = results[0] as *mut u8;
@@ -52,12 +54,16 @@ fn main() {
         println!("Pattern match at {:p}", target);
         println!("Hooking address...");
 
-        let mut hook =
-            HookEntry::new(target, hooked_message_box as *mut u8).expect("Hook creation failed");
+        let memory_view = LocalMemory {};
+
+        let mut hook = HookEntry::new(target, hooked_message_box as *mut u8, memory_view)
+            .expect("Hook creation failed");
 
         ORIGINAL_MESSAGEBOX.store(hook.original() as *mut (), Ordering::SeqCst);
 
-        hook.toggle().unwrap();
+        let memory_view = LocalMemory {};
+
+        hook.toggle(&memory_view).unwrap();
 
         // Test call
         MessageBoxW(
