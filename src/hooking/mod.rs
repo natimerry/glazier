@@ -64,6 +64,9 @@ pub enum HookError {
 
     #[error("Runtime error: {0}")]
     RuntimeError(#[from] ExpError),
+
+    #[error("Tried to hook an external process!")]
+    ExternalHook,
 }
 
 #[repr(C)]
@@ -332,6 +335,12 @@ impl HookEntry {
         }
 
         let handle = m.get_handle();
+        // problem for future me
+
+        if let None = handle {
+            return Err(HookError::ExternalHook);
+        }
+
         unsafe {
             if !check_address_executable(target, handle)
                 || !check_address_executable(detour, handle)
