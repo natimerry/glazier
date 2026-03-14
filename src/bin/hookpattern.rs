@@ -46,7 +46,7 @@ fn main() {
         let memory_view = LocalMemory {};
 
         let results = pattern
-            .scan(memory_view, base, size, PatternScanOption::Begin)
+            .scan(&memory_view, base, size, PatternScanOption::Begin)
             .expect("Pattern not found");
 
         let target = results[0] as *mut u8;
