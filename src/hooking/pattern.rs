@@ -34,9 +34,9 @@ impl Pattern {
         Ok(Pattern { bytes, mask })
     }
 
-    pub fn scan(
+    pub fn scan<M: MemoryView>(
         &mut self,
-        memory_reader: impl MemoryView,
+        memory_reader: &M,
         base: *const u8,
         size: usize,
         opt: PatternScanOption,
