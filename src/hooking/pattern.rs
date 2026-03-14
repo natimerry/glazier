@@ -1,11 +1,20 @@
 use crate::ExpError;
 use crate::runtime::memory::MemoryView;
+use crate::runtime::process::Process;
+use crate::winapi::CreateToolhelp32Snapshot;
+use crate::winapi::MODULEENTRY32W;
+use crate::winapi::Module32NextW;
+use crate::winapi::raw::Module32FirstW;
+use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE;
+use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE32;
+use windows_sys::Win32::System::Threading::PROCESS_ALL_ACCESS;
 
 pub struct Pattern {
     bytes: Vec<u8>,
     mask: Vec<bool>,
 }
 
+#[derive(Clone, Copy)]
 pub enum PatternScanOption {
     Begin,
     End,
@@ -76,5 +85,59 @@ impl Pattern {
         } else {
             Some(matches)
         }
+    }
+
+    /// returns an optional vector of matches and the module it was found in
+    /// a remote process
+    pub unsafe fn scan_all_loaded_modules<M: MemoryView>(
+        &mut self,
+        memory_reader: &M,
+        process_name: impl ToString,
+        opt: PatternScanOption,
+    ) -> Option<Vec<(*const u8, String)>> {
+        let procs = Process::get_from_name(process_name, PROCESS_ALL_ACCESS).unwrap();
+
+        let mut matches: Vec<(*const u8, String)> = vec![];
+        for proc in procs {
+            let pid = proc.pid;
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+            if snap as i64 == -1 {
+                return None;
+            }
+
+            let mut me = MODULEENTRY32W {
+                dwSize: std::mem::size_of::<MODULEENTRY32W>() as u32,
+                ..unsafe { std::mem::zeroed() }
+            };
+            if Module32FirstW(snap, &mut me) > 0 {
+                loop {
+                    let szmodule = me.szModule;
+                    let len = szmodule
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(szmodule.len());
+                    let mod_name = String::from_utf16_lossy(&szmodule[..len]);
+                    let scan_res = self
+                        .scan(
+                            memory_reader,
+                            me.modBaseAddr as *const u8,
+                            me.modBaseSize as usize,
+                            opt,
+                        )
+                        .unwrap_or_default();
+                    let final_vec = scan_res
+                        .iter()
+                        .map(|x| (*x, mod_name.clone()))
+                        .collect::<Vec<_>>();
+                    matches.extend(final_vec);
+
+                    if Module32NextW(snap, &mut me) == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        todo!()
     }
 }
