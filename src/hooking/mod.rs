@@ -337,7 +337,7 @@ impl HookEntry {
         let handle = m.get_handle();
         // problem for future me
 
-        if let None = handle {
+        if let Some(_) = handle {
             return Err(HookError::ExternalHook);
         }
 
