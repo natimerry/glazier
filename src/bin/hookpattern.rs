@@ -41,7 +41,10 @@ fn main() {
         let base = module as *const u8;
         let size = 0x100000;
 
-        let mut pattern = Pattern::from("48 83 EC 38 45 33 DB ?? 39 1D EA 18 ?? 00 74 25").unwrap();
+        let mut pattern = Pattern::builder()
+            .pattern("48 83 EC 38 45 33 DB ?? 39 1D 56 1E 07 00 74 25")
+            .unwrap()
+            .build();
 
         let memory_view = LocalMemory {};
 

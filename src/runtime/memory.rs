@@ -7,6 +7,7 @@ use crate::winapi::MEMORY_BASIC_INFORMATION;
 use crate::winapi::NtReadVirtualMemoryHellsGate;
 use crate::winapi::NtWriteVirtualMemoryHellsGate;
 use crate::winapi::PDWORD;
+use crate::winapi::ReadProcessMemory;
 use crate::winapi::SIZE_T;
 use crate::winapi::VirtualProtect;
 use crate::winapi::VirtualProtectEx;
@@ -90,6 +91,8 @@ pub trait MemoryView {
             res
         }
     }
+
+    fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize;
 }
 
 pub struct LocalMemory;
@@ -123,6 +126,13 @@ impl MemoryView for LocalMemory {
     }
 
     fn get_handle(&self) -> Option<HANDLE> { None }
+
+    fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
+        unsafe {
+            std::ptr::copy_nonoverlapping(addr as *const u8, buf.as_mut_ptr(), buf.len());
+        }
+        buf.len()
+    }
 }
 
 impl MemoryView for RemoteMemory {
@@ -168,4 +178,19 @@ impl MemoryView for RemoteMemory {
     }
 
     fn get_handle(&self) -> Option<HANDLE> { return Some(self.handle); }
+
+    fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
+        let mut got: SIZE_T = 0;
+        // TODO USE NT
+        unsafe {
+            ReadProcessMemory(
+                self.handle,
+                addr as *const _,
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u64,
+                &mut got,
+            );
+        }
+        got as usize
+    }
 }
