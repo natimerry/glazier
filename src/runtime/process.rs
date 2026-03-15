@@ -1,8 +1,18 @@
 use crate::ExpError;
-use crate::winapi::*;
+use crate::winapi::CloseHandle;
+use crate::winapi::CreateToolhelp32Snapshot;
+use crate::winapi::DWORD;
+use crate::winapi::GetProcessImageFileNameA;
+use crate::winapi::GetWindowTextA;
+use crate::winapi::HANDLE;
+use crate::winapi::HWND;
+use crate::winapi::OpenProcess;
+use crate::winapi::PROCESSENTRY32;
+use crate::winapi::Process32First;
+use crate::winapi::Process32Next;
+use crate::winapi::raw::GetWindowTextLengthA;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
-
 #[derive(Debug)]
 pub struct Process {
     pub handle: HANDLE,
@@ -10,6 +20,13 @@ pub struct Process {
     pub window_name: Option<String>,
     pub path: Option<String>,
     pub pid: u32,
+}
+impl Drop for Process {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.handle);
+        }
+    }
 }
 
 impl Process {
