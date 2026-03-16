@@ -37,7 +37,20 @@ impl PE64Runtime<LocalMemory> {
                 return Ok(ssn);
             }
             let func_name = exported_func.name.clone().unwrap();
-            if *func_addr == 0xE9 {
+
+            let control_flow_ops = [
+                0xE8, // call rel32
+                0xE9, // jmp rel32
+                0xEB, // jmp rel8
+                0x70, // jcc short
+                0x0F, // jcc near
+                0xFF, // call/jmp r/m
+                0xC3, // ret
+                0xC2, // ret imm16
+                0xE3, // jcxz
+            ];
+            let op = *func_addr;
+            if control_flow_ops.contains(&(op as i32)) {
                 warn!(
                     "Function {} is hooked (JMP detected). Scanning forward...",
                     func_name.clone().to_string()
