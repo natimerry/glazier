@@ -2,13 +2,17 @@
 
 use thiserror::Error;
 
+pub mod consts;
 pub mod hde;
 pub mod pe;
 #[cfg(feature = "runtime")]
 pub mod runtime;
 pub mod utils;
 
+// reexport
+pub use consts::*;
 pub use pe::pe64_static::*;
+pub use runtime::*;
 
 pub mod hooking;
 #[cfg(not(target_arch = "x86_64"))]

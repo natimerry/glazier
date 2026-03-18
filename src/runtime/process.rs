@@ -1,4 +1,5 @@
 use crate::ExpError;
+use crate::TH32CS_SNAPPROCESS;
 use crate::winapi::CloseHandle;
 use crate::winapi::CreateToolhelp32Snapshot;
 use crate::winapi::DWORD;
@@ -12,7 +13,7 @@ use crate::winapi::Process32First;
 use crate::winapi::Process32Next;
 use crate::winapi::raw::GetWindowTextLengthA;
 use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPPROCESS;
+
 #[derive(Debug)]
 pub struct Process {
     pub handle: HANDLE,
