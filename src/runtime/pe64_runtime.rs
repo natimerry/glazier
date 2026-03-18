@@ -46,6 +46,22 @@ pub struct PE64Runtime<M: MemoryView> {
 }
 
 impl PE64Runtime<RemoteMemory> {
+    /// Returns the export directory of a remote process's main module (first
+    /// entry in the PEB `InMemoryOrderModuleList`).
+    ///
+    /// Queries the remote [`PEB`] via `NtQueryInformationProcess`, reads
+    /// [`PEB_LDR_DATA`], and takes the first [`LDR_DATA_TABLE_ENTRY`]
+    /// without walking the full list. Delegates to
+    /// [`Self::from_base_address_remote`] for PE parsing.
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpError::RuntimeError`] — `NtQueryInformationProcess` failed.
+    /// - Any [`ExpError`] from [`RemoteMemory::read`] on cross-process read
+    ///   failure.
+    ///
+    /// Requires `handle` to have `PROCESS_QUERY_INFORMATION | PROCESS_VM_READ`
+    /// access.
     pub fn from_handle(handle: HANDLE) -> Result<Self, ExpError> {
         let memory = RemoteMemory { handle };
 
@@ -78,6 +94,27 @@ impl PE64Runtime<RemoteMemory> {
         Self::from_base_address_remote(memory, module_base)
     }
 
+    /// Locates a module in a remote process by walking the PEB module list and
+    /// returns its parsed export directory.
+    ///
+    /// Queries the remote [`PEB`] via `NtQueryInformationProcess`, walks
+    /// `InMemoryOrderModuleList`, and matches each entry's full DLL path
+    /// against `dll_name` (case-insensitive substring). On match, delegates
+    /// to [`Self::from_base_address_remote`].
+    ///
+    /// # Arguments
+    ///
+    /// * `handle` - Target process handle; requires `PROCESS_QUERY_INFORMATION
+    ///   | PROCESS_VM_READ`.
+    /// * `dll_name` - Case-insensitive substring matched against each module's
+    ///   full path (e.g. `"ntdll"` matches `C:\Windows\System32\ntdll.dll`).
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpError::RuntimeError`] — `NtQueryInformationProcess` failed.
+    /// - [`ExpError::ExportError`] — no loaded module matched `dll_name`.
+    /// - Any [`ExpError`] from [`RemoteMemory::read`] on cross-process read
+    ///   failure.
     pub fn from_module_remote(handle: HANDLE, dll_name: impl ToString) -> Result<Self, ExpError> {
         let memory = RemoteMemory { handle };
         let target_name = dll_name.to_string().to_lowercase();
@@ -186,6 +223,17 @@ impl PE64Runtime<RemoteMemory> {
     }
 }
 impl PE64Runtime<LocalMemory> {
+    /// Returns the export directory of the current process's main module via
+    /// the in-process PEB.
+    ///
+    /// Reads the TEB directly, walks to `PEB.Ldr.InMemoryOrderModuleList`, and
+    /// takes the first [`LDR_DATA_TABLE_ENTRY`] without cross-process
+    /// reads. Delegates to [`Self::from_base_address`] for PE parsing.
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpError::ExportError`] — TEB or PEB pointer is null.
+    /// - Any [`ExpError`] from [`Self::from_base_address`].
     pub fn from_current_module() -> Result<Self, ExpError> {
         unsafe {
             let teb = get_teb();
@@ -209,6 +257,18 @@ impl PE64Runtime<LocalMemory> {
         }
     }
 
+    /// Locates a module in the current process by walking the PEB module list
+    /// and returns its parsed export directory.
+    ///
+    /// Reads the TEB directly, walks `InMemoryOrderModuleList`, and matches
+    /// each entry's full DLL path against `dll_name` (case-insensitive
+    /// substring). Delegates to [`Self::from_base_address`] on match.
+    ///
+    /// # Errors
+    ///
+    /// - [`ExpError::ExportError`] — TEB or PEB is null, or no loaded module
+    ///   matched `dll_name`.
+    /// - Any [`ExpError`] from [`Self::from_base_address`].
     pub fn from_module(dll_name: impl ToString) -> Result<Self, ExpError> {
         unsafe {
             let teb = get_teb();
@@ -295,10 +355,13 @@ impl PE64Runtime<LocalMemory> {
 }
 
 impl<M: MemoryView> PE64Runtime<M> {
+    /// Returns all section headers parsed from the PE header.
     pub fn sections(&self) -> &[ImageSectionHeader] {
         unsafe { core::slice::from_raw_parts(self.section_headers, self.section_count as usize) }
     }
 
+    /// Finds a section by its null-padded 8-byte name (e.g. `".text"`,
+    /// `".rdata"`).
     pub fn find_section(&self, name: &str) -> Option<&ImageSectionHeader> {
         self.sections().iter().find(|section| {
             let section_name = unsafe {
@@ -310,16 +373,19 @@ impl<M: MemoryView> PE64Runtime<M> {
             section_name == name
         })
     }
-
+    /// Returns the section whose virtual address range contains `rva`, if any.
     pub fn section_containing_rva(&self, rva: u32) -> Option<&ImageSectionHeader> {
         self.sections()
             .iter()
             .find(|s| rva >= s.virtual_address && rva < s.virtual_address + s.virtual_size)
     }
 
+    /// Converts a relative virtual address to an absolute virtual address.
     #[inline]
     pub fn rva_to_va(&self, rva: u32) -> u64 { self.module_base + rva as u64 }
 
+    /// Converts an absolute virtual address to an RVA, or `None` if `va`
+    /// precedes the module base.
     #[inline]
     pub fn va_to_rva(&self, va: u64) -> Option<u32> {
         if va >= self.module_base {
@@ -329,6 +395,7 @@ impl<M: MemoryView> PE64Runtime<M> {
         }
     }
 
+    /// Returns `true` if the PE has a non-null export directory.
     #[inline]
     pub fn has_exports(&self) -> bool { !self.export_dir.is_null() }
 }
