@@ -180,6 +180,10 @@ impl PE64Runtime<RemoteMemory> {
             image_size,
         })
     }
+
+    pub fn patch_memory(&self, address: u64, bytes: &[u8]) -> Result<(), ExpError> {
+        self.memory.write_bytes(address, bytes)
+    }
 }
 impl PE64Runtime<LocalMemory> {
     pub fn from_current_module() -> Result<Self, ExpError> {
