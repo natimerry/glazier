@@ -1,5 +1,3 @@
-use crate::winapi::INIT_ONCE;
-
 pub const PF_3DNOW_INSTRUCTIONS_AVAILABLE: ProcessorFeatureId = 7u32;
 pub const PF_ALPHA_BYTE_INSTRUCTIONS: ProcessorFeatureId = 5u32;
 pub const PF_ARM_64BIT_LOADSTORE_ATOMIC: ProcessorFeatureId = 25u32;
