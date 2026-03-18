@@ -10,12 +10,19 @@ use log::trace;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE32;
 
+/// A compiled byte pattern supporting wildcards, used for scanning memory
+/// regions.
+///
+/// Construct via [`Pattern::builder`] or [`PatternBuilder`]. Internally
+/// pre-computes [`ConcreteRun`]s (contiguous non-wildcard spans ≥ 6 bytes) for
+/// accelerated scanning via `memchr`.
 pub struct Pattern {
     bytes: Vec<Option<u8>>,
     concrete_runs: Vec<ConcreteRun>,
     return_num: Option<usize>,
 }
 
+/// Controls whether scan results point to the start or end of each match.
 #[derive(Clone, Copy)]
 pub enum PatternScanOption {
     Begin,
@@ -28,6 +35,7 @@ pub struct PatternBuilder {
 }
 
 impl PatternBuilder {
+    // Creates a new empty builder
     pub fn new() -> Self {
         Self {
             bytes: Vec::new(),
@@ -35,16 +43,19 @@ impl PatternBuilder {
         }
     }
 
+    /// Appends a single concrete byte.
     pub fn byte(mut self, b: u8) -> Self {
         self.bytes.push(Some(b));
         self
     }
 
+    /// Appends a single wildcard byte (`?`).
     pub fn wildcard(mut self) -> Self {
         self.bytes.push(None);
         self
     }
 
+    /// Appends a slice of concrete bytes.
     pub fn bytes(mut self, bytes: &[u8]) -> Self {
         for b in bytes {
             self.bytes.push(Some(*b));
@@ -52,6 +63,7 @@ impl PatternBuilder {
         self
     }
 
+    /// Appends the UTF-8 bytes of `s` as concrete bytes.
     pub fn str(mut self, s: &str) -> Self {
         for b in s.as_bytes() {
             self.bytes.push(Some(*b));
@@ -59,6 +71,7 @@ impl PatternBuilder {
         self
     }
 
+    /// Appends `s` as little-endian UTF-16 concrete bytes.
     pub fn utf16(mut self, s: &str) -> Self {
         for c in s.encode_utf16() {
             let bytes = c.to_le_bytes();
@@ -67,7 +80,7 @@ impl PatternBuilder {
         }
         self
     }
-
+    /// Appends `n` wildcard bytes.
     pub fn wildcard_bytes(mut self, n: usize) -> Self {
         for _ in 0..n {
             self.bytes.push(None);
@@ -75,6 +88,15 @@ impl PatternBuilder {
         self
     }
 
+    /// Parses an IDA-style hex pattern string (e.g. `"48 8B ? 05 ?? 00"`).
+    ///
+    /// `?` and `??` are treated as wildcards; all other tokens must be valid
+    /// two-digit hex bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpError::InvalidPatternError`] if any token is not a valid
+    /// hex byte.
     pub fn pattern(mut self, pattern: &str) -> Result<Self, ExpError> {
         for part in pattern.split_whitespace() {
             if part == "?" || part == "??" {
@@ -87,11 +109,15 @@ impl PatternBuilder {
 
         Ok(self)
     }
+
+    /// Stops scanning after `n` matches have been found.
     pub fn scan_number(mut self, n: usize) -> Self {
         self.return_num = Some(n);
         self
     }
 
+    /// Compiles the pattern, pre-computing concrete runs for accelerated
+    /// scanning.
     pub fn build(self) -> Pattern {
         let concrete_runs = ConcreteRun::build(&self.bytes).unwrap_or_default();
 
@@ -104,8 +130,16 @@ impl PatternBuilder {
 }
 
 impl Pattern {
+    /// Returns a new [`PatternBuilder`].
     pub fn builder() -> PatternBuilder { PatternBuilder::new() }
 
+    /// Scans a memory region for all matches of this pattern.
+    ///
+    /// Reads in 4 MiB chunks with overlap to handle matches spanning chunk
+    /// boundaries.
+    ///
+    /// Returns `None` if the region is smaller than the pattern or no matches
+    /// are found. Respects [`PatternBuilder::scan_number`] if set.
     pub fn scan<M: MemoryView>(
         &mut self,
         memory_reader: &M,
@@ -127,7 +161,6 @@ impl Pattern {
 
         let no_wildcards = self.bytes.iter().all(|b| b.is_some());
         let first_byte = self.bytes.iter().find_map(|b| *b);
-
         // if we can split this crap up
         if !self.concrete_runs.is_empty() {
             let anchor = &self.concrete_runs[0];
@@ -240,6 +273,9 @@ impl Pattern {
                             PatternScanOption::End => base.add(off + i + n),
                         };
                         matches.push(addr);
+                    }
+                    if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+                        break 'chunks;
                     }
                 }
             }
