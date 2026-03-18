@@ -289,8 +289,19 @@ impl Pattern {
             Some(matches)
         }
     }
-    /// returns an optional vector of matches and the module it was found in
-    /// a remote process
+
+    /// Scans all modules loaded in a remote process, returning each match
+    /// paired with its module name.
+    ///
+    /// Enumerates modules via `CreateToolhelp32Snapshot` / `Module32FirstW` /
+    /// `Module32NextW` and delegates to [`Pattern::scan`] per module.
+    ///
+    /// Returns `None` if the snapshot handle is invalid.
+    ///
+    /// # Safety
+    ///
+    /// `handle` must be a valid process handle with `PROCESS_VM_READ` access.
+    /// `pid` must correspond to the process identified by `handle`.
     pub unsafe fn scan_all_loaded_modules(
         &mut self,
         handle: HANDLE,
