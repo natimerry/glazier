@@ -156,12 +156,11 @@ fn generate_winapi_bindings(out_dir: &str) {
         .header_contents(
             "wrapper.h",
             r#"
-            #define WIN32_LEAN_AND_MEAN
-            #define NOMINMAX
-            #define _WIN32_WINNT 0x0A00   // Windows 10+ (OK for 11)
-
             #define PHNT_MODE PHNT_MODE_USER
             #define PHNT_VERSION PHNT_WINDOWS_11
+            #define _WIN32_WINNT 0x0A00
+            #define WIN32_LEAN_AND_MEAN
+            #define NOMINMAX
 
             #include <phnt_windows.h>
             #include <phnt.h>
