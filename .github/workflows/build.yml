@@ -1,0 +1,64 @@
+name: Build & Export Bindings
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install LLVM (for bindgen / clang)
+        run: choco install llvm -y
+
+      - name: Set LIBCLANG_PATH
+        shell: pwsh
+        run: |
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+
+      - name: Build (capture full logs)
+        shell: pwsh
+        run: |
+          # Run build and capture stdout+stderr
+          cargo build --release --target x86_64-pc-windows-msvc 2>&1 | Tee-Object -FilePath build_full.log
+
+      # 🔍 Extract raw_bindings.rs dynamically
+      - name: Locate generated files
+        id: locate
+        shell: pwsh
+        run: |
+          $raw = Get-ChildItem -Recurse -Filter raw_bindings.rs target | Select-Object -First 1
+          if (-not $raw) {
+            Write-Error "raw_bindings.rs not found!"
+            exit 1
+          }
+
+          # build.log is written in project root
+          $blog = if (Test-Path build.log) { (Resolve-Path build.log).Path } else { "" }
+
+          echo "RAW=$($raw.FullName)" >> $env:GITHUB_OUTPUT
+          echo "BLOG=$blog" >> $env:GITHUB_OUTPUT
+
+      # 📤 Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bindings-and-logs
+          path: |
+            ${{ steps.locate.outputs.RAW }}
+            ${{ steps.locate.outputs.BLOG }}
+            build_full.log
