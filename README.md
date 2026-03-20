@@ -1,97 +1,116 @@
 # libwinexploit
 
-An experimental Rust framework for Windows binary analysis and manipulation with a focus on stealthy API resolution and low-level system interactions.
+`libwinexploit` is an experimental Rust library for Windows PE analysis, runtime process interaction, dynamic API resolution, and direct syscall-oriented research workflows.
 
-> **WARNING: HEAVY WIP**  
-> This library is in active development. APIs are unstable, features are incomplete, and breaking changes occur frequently. Testing coverage is limited, especially for syscall functionality.
+> Warning
+> This project is still heavy WIP. APIs are unstable, internal layouts may change quickly, and syscall-related paths still need broader validation.
 
-## What It Does
+## Current Scope
 
-**libwinexploit** provides Rust abstractions for working with Windows binaries at both static and runtime levels, with built-in support for evasive API calling techniques commonly used in security research and binary analysis.
+The crate currently covers four main areas:
 
-### Current Features
+- PE parsing for DOS headers, NT headers, section headers, and import/export analysis.
+- Runtime helpers for process inspection, remote memory access, export walking, and in-memory PE work.
+- Hooking and pattern-scanning utilities for locating code and patch targets.
+- Stealth-oriented API access through dynamic resolution and `HellsGate` syscall wrappers.
 
-## PE Binary Analysis
-- Parse and analyze PE (Portable Executable) file structures
-- Extract and enumerate import/export tables
-- Inspect section headers and metadata
+## Notable Capabilities
 
-### Process Interaction
-- Open and interact with running processes
-- Read process memory and structures
-- Query process information
+### PE analysis
 
-### Dynamic API Resolution (`obfuscation` feature)
-Instead of static linking like the `windows-sys` crate, this feature enables **fully dynamic API resolution at runtime**:
+- Parse 64-bit PE structures from disk.
+- Enumerate exports and imports.
+- Inspect section metadata and headers.
 
-- Automatically generates type-safe Rust bindings for WinAPI and NT functions
-- Resolves function addresses dynamically without import table entries
-- Locates source DLLs automatically (e.g., `kernel32.dll`, `ntdll.dll`)
-- Finds `LoadLibrary` from the in-memory `kernel32.dll` image
-- Loads required DLLs and scans for function pointers
-- No manual typedef or signature definitions required from the user
+### Runtime and memory work
 
-This technique avoids leaving static import traces and makes API usage harder to detect through static analysis.
+- Open and inspect running processes.
+- Read process memory and query process information.
+- Patch memory in runtime PE helpers.
+- Walk loaded module exports and runtime PE structures.
 
-**HOWEVER BINDGEN DOES NOT PORT CONSTANTS AND OTHER DEFINES LIKE `MB_OK`,`PAGE_READWRITE` and stuff like that. So you might still want a crate that gives you the constants for better ergon**
+### Hooking and pattern scanning
 
-### Direct Syscalls (`hells_gate` feature)
-For maximum stealth when calling NT-level functions:
+- Scan memory with IDA-style byte patterns.
+- Use hooking-oriented helpers from the `hooking` module.
+- Benefit from recent pattern-scanning performance improvements and expanded docs in the runtime pattern code.
 
-- Provides `*HellsGate` function variants for `Nt*` and `Zw*` APIs
-- Automatically finds System Service Numbers (SSNs) at runtime
-- Executes syscalls directly, bypassing user-mode hooks
-- Uses the same type signatures as standard NT functions
-- Includes hand-written assembly thunks for handling 5+ argument syscalls
-- **Note:** Testing is very limited at this stage
+### Dynamic API resolution
+
+With the `obfuscation` feature enabled, the crate generates bindings and resolves Win32 / NT APIs at runtime instead of relying only on static imports.
+
+- Resolves function addresses dynamically.
+- Locates source DLLs automatically.
+- Reduces obvious import-table traces in the final binary.
+- Reuses generated bindings for Win32 and NT calls.
+
+`bindgen` does not carry over every Windows constant or preprocessor define, so pairing this crate with another source of Win32 constants can still be useful.
+
+### Direct syscalls
+
+With the `hells_gate` feature enabled, the crate exposes syscall-oriented wrappers for NT APIs.
+
+- Provides `*HellsGate` variants for selected `Nt*` / `Zw*` functions.
+- Resolves syscall numbers at runtime.
+- Includes support for extended control-flow opcode handling in the export scanning path.
+- Uses assembly helpers for calls with more than four arguments.
 
 ## Feature Flags
 
-- `obfuscation` - Enable dynamic API resolution instead of static imports
-- `hells_gate` - Enable direct syscall execution for NT functions
+- `runtime`: enables runtime process and memory helpers.
+- `obfuscation`: enables runtime API resolution and generated wrappers.
+- `hells_gate`: enables direct syscall helpers.
 
-## Usage Example
+Default features are `runtime`, `obfuscation`, and `hells_gate`.
 
-```rust
+## Project Layout
 
-// With obfuscation feature: dynamically resolves CreateFileW at runtime
-#[cfg(feature = "obfuscation")]
-let handle = CreateFileW(/* args */); 
+- `src/pe`: static PE parsing.
+- `src/runtime`: runtime PE, process, export, and memory helpers.
+- `src/hooking`: pattern scanning and hooking support.
+- `src/consts.rs`: shared Windows-related constants exposed by the crate.
+- `src/bin`: small examples and experiments for individual features.
 
-// With hells_gate feature: calls NtCreateFile via direct syscall
-#[cfg(feature = "hells_gate")]
-let status = NtCreateFileHellsGate(/* args */);
-```
+## Getting Started
 
-## Architecture
+### Prerequisites
 
-The project uses compile-time code generation to produce Rust bindings based on enabled features. When `obfuscation` is enabled, generated code includes dynamic resolution logic. When `hells_gate` is enabled, SSN discovery and syscall invocation code is automatically woven into NT function wrappers.
+- Rust toolchain with `cargo`
+- `x86_64` target environment
+- The `phnt` submodule checked out
 
-## Git Submodules
-
-This project depends on the [phnt](https://github.com/winsiderss/phnt) headers for accurate Windows internal structures:
+Initialize submodules before building:
 
 ```bash
 git submodule update --init --recursive
 ```
 
+### Build
+
+```bash
+cargo build
+```
+
+### Run examples
+
+```bash
+cargo run --bin read_pe_file
+cargo run --bin hookpattern
+cargo run --bin hells_gate
+```
+
+## Changelog
+
+Recent project history is tracked in [CHANGELOG.md](CHANGELOG.md).
+
 ## AI Usage Disclaimer
 
-This project uses LLMs to accelerate repetitive tasks like generating docstrings, porting C struct definitions to Rust, and formatting CLI output and porting some of the `bins/` to proper `tests`. **Core logic and anything which is NOT print formatting or stupid boilerplate reimplementation of existing code are manually implemented and not AI-generated.**
-
-## Roadmap
-
-Future development may include:
-- Hooking and function detouring (implementation logic based on existing [minhook](https://github.com/TsudaKageyu/minhook))
-- Pattern scanning (AOB/signature search)
-- Memory manipulation utilities
-- Symbolic execution integration
-- Binary emulation capabilities
+LLMs are used in this repository for repetitive tasks such as docstrings, formatting, and some straightforward boilerplate translation work. Core implementation logic is intended to remain manually authored.
 
 ## License
 
-MIT most probably ig havent decided yet
+License selection is not finalized yet.
 
-***
+## Safety
 
-**For research and educational purposes only. Users are responsible for ensuring compliance with applicable laws and regulations.**
+This project is for research and educational use. You are responsible for ensuring your usage complies with applicable law, policy, and authorization boundaries.
