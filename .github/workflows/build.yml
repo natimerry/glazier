@@ -15,6 +15,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify submodules
+        run: git submodule status
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
