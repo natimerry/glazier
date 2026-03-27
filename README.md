@@ -105,7 +105,7 @@ Recent project history is tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## AI Usage Disclaimer
 
-LLMs are used in this repository for repetitive tasks such as docstrings, formatting, and some straightforward boilerplate translation work. Core implementation logic is intended to remain manually authored.
+LLMs are used to translate some C structs to Rust to save time and write tests and test binaries as code quality on those dont matter imo.
 
 ## License
 
