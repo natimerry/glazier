@@ -26,17 +26,20 @@ jobs:
       - name: Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Install MinGW
-        run: choco install mingw -y
+      - name: Install LLVM and MinGW
+        run: choco install llvm mingw -y
 
-      - name: Add MinGW to PATH
+      - name: Set LIBCLANG_PATH and add MinGW to PATH
         shell: pwsh
         run: |
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
           echo "C:\ProgramData\mingw64\mingw64\bin" >> $env:GITHUB_PATH
 
-      - name: Verify gcc
+      - name: Verify tools
         shell: pwsh
-        run: gcc --version
+        run: |
+          clang --version
+          gcc --version
 
       - name: Compile C test sample with gcc
         shell: pwsh
