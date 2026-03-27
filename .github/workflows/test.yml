@@ -1,0 +1,56 @@
+name: Build & Test
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RUST_BACKTRACE: 1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify submodules
+        run: git submodule status
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install MinGW
+        run: choco install mingw -y
+
+      - name: Add MinGW to PATH
+        shell: pwsh
+        run: |
+          echo "C:\ProgramData\mingw64\mingw64\bin" >> $env:GITHUB_PATH
+
+      - name: Verify gcc
+        shell: pwsh
+        run: gcc --version
+
+      - name: Compile C test sample with gcc
+        shell: pwsh
+        run: |
+          gcc tests/samples/app_custom_section_with_imports.c `
+            -o tests/samples/app_custom_section_with_imports.exe
+
+      - name: Run cargo test
+        shell: pwsh
+        run: cargo test 2>&1 | Tee-Object -FilePath test_output.log
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: test_output.log
