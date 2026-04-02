@@ -4,7 +4,9 @@ use crate::winapi::DWORD;
 use crate::winapi::HANDLE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
+use crate::winapi::NtReadVirtualMemory;
 use crate::winapi::NtReadVirtualMemoryHellsGate;
+use crate::winapi::NtWriteVirtualMemory;
 use crate::winapi::NtWriteVirtualMemoryHellsGate;
 use crate::winapi::PDWORD;
 use crate::winapi::ReadProcessMemory;
@@ -101,7 +103,9 @@ pub struct RemoteMemory {
     pub handle: HANDLE,
 }
 impl RemoteMemory {
-    pub fn from_handle(handle: HANDLE) -> Self { Self { handle } }
+    pub fn from_handle(handle: HANDLE) -> Self {
+        Self { handle }
+    }
 }
 
 impl MemoryView for LocalMemory {
@@ -125,7 +129,9 @@ impl MemoryView for LocalMemory {
         }
     }
 
-    fn get_handle(&self) -> Option<HANDLE> { None }
+    fn get_handle(&self) -> Option<HANDLE> {
+        None
+    }
 
     fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
         unsafe {
@@ -140,6 +146,7 @@ impl MemoryView for RemoteMemory {
         unsafe {
             let mut buffer: T = std::mem::zeroed();
             let mut bytes_read: u64 = 0;
+            #[cfg(feature = "hells_gate")]
             let status = NtReadVirtualMemoryHellsGate(
                 self.handle,
                 address as *mut _,
@@ -147,6 +154,16 @@ impl MemoryView for RemoteMemory {
                 size_of::<T>() as u64,
                 &mut bytes_read,
             );
+
+            #[cfg(not(feature = "hells_gate"))]
+            let status = NtReadVirtualMemory(
+                self.handle,
+                address as *mut _,
+                &mut buffer as *mut _ as *mut _,
+                size_of::<T>() as u64,
+                &mut bytes_read,
+            );
+
             if status < 0 {
                 return Err(ExpError::RuntimeError("NT READ FAIL".to_string()));
             }
@@ -160,7 +177,17 @@ impl MemoryView for RemoteMemory {
     fn write<T: Copy>(&self, address: u64, value: T) -> Result<(), ExpError> {
         unsafe {
             let mut bytes_written: u64 = 0;
+            #[cfg(feature = "hells_gate")]
             let status = NtWriteVirtualMemoryHellsGate(
+                self.handle,
+                address as *mut _,
+                &value as *const _ as *mut _,
+                size_of::<T>() as u64,
+                &mut bytes_written,
+            );
+
+            #[cfg(not(feature = "hells_gate"))]
+            let status = NtWriteVirtualMemory(
                 self.handle,
                 address as *mut _,
                 &value as *const _ as *mut _,
@@ -177,7 +204,9 @@ impl MemoryView for RemoteMemory {
         }
     }
 
-    fn get_handle(&self) -> Option<HANDLE> { return Some(self.handle); }
+    fn get_handle(&self) -> Option<HANDLE> {
+        return Some(self.handle);
+    }
 
     fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
         let mut got: SIZE_T = 0;
