@@ -1,4 +1,6 @@
 /target
+/.xwin*
+/windows-kit
 /.idea
 /tests/samples/*.exe
 /*.log

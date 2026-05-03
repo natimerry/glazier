@@ -31,12 +31,14 @@ incremental = false
 rpath = false
 
 [build-dependencies]
-winreg = "0.55.0"
 mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0"}
 bindgen = "0.70"
 syn = { version = "2.0", features = ["full", "parsing"] }
 quote = "1.0"
 indicatif = "0.17"
+
+[target.'cfg(windows)'.build-dependencies]
+winreg = "0.55.0"
 
 
 [profile.dev]

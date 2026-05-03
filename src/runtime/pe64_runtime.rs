@@ -13,11 +13,27 @@ use crate::winapi::HANDLE;
 use crate::winapi::LIST_ENTRY;
 use crate::winapi::NtQueryInformationProcess;
 use crate::winapi::PEB;
-use crate::winapi::PEB_LDR_DATA;
 use crate::winapi::PROCESS_BASIC_INFORMATION;
 use std::mem::offset_of;
 use windows_sys::Win32::System::Threading::TEB;
 use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
+
+// Use manual PEB_LDR_DATA definition because bindgen generates incomplete structs
+// when running on non-Windows hosts (Linux/macOS), even when cross-compiling to Windows
+#[repr(C)]
+#[derive(Copy, Clone, Debug)]
+#[allow(nonstandard_style)]
+pub struct PEB_LDR_DATA {
+    pub Length: u32,
+    pub Initialized: u8,
+    pub SsHandle: *mut std::ffi::c_void,
+    pub InLoadOrderModuleList: LIST_ENTRY,
+    pub InMemoryOrderModuleList: LIST_ENTRY,
+    pub InInitializationOrderModuleList: LIST_ENTRY,
+    pub EntryInProgress: *mut std::ffi::c_void,
+    pub ShutdownInProgress: u8,
+    pub ShutdownThreadId: *mut std::ffi::c_void,
+}
 
 pub struct PE64Runtime<M: MemoryView> {
     pub memory: M,

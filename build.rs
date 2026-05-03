@@ -82,6 +82,7 @@ unsafe{{
     fs::write(&dest_path, code).unwrap();
 }
 
+#[cfg(windows)]
 fn windows_kits_root10() -> PathBuf {
     use winreg::RegKey;
     use winreg::enums::HKEY_LOCAL_MACHINE;
@@ -103,12 +104,18 @@ fn windows_kits_root10() -> PathBuf {
         }
     }
 
-    panic!(
-        "Windows SDK not found: registry value KitsRoot10 missing.\n\
-         Looked in HKLM\\SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots (and WOW6432Node)."
+panic!(
+        r#"Windows SDK not found: registry value KitsRoot10 missing.
+Looked in HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots (and WOW6432Node)."#
     );
 }
 
+#[cfg(not(windows))]
+fn windows_kits_root10() -> PathBuf {
+    PathBuf::from("./windows-kit")
+}
+
+#[cfg(windows)]
 fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
     let include_root = kits_root10.join("Include");
     let rd = fs::read_dir(&include_root).unwrap_or_else(|e| {
@@ -145,48 +152,78 @@ fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
     );
 }
 
+#[cfg(not(windows))]
+fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
+    let include_root = kits_root10.join("sdk").join("include");
+    log!("Using local xwin include dir: {:?}", include_root);
+
+    if !include_root.exists() {
+        panic!(
+            "Windows SDK include root not found: {:?}",
+            include_root
+        );
+    }
+
+    include_root
+}
+
 fn generate_winapi_bindings(out_dir: &str) {
     log!("Starting WinAPI bindings generation...");
 
     let kits = windows_kits_root10();
     let include_ver = newest_windows_sdk_include_dir(&kits);
 
-    log!("Found WINAPI version: {:?}", &include_ver);
-    let bindings = bindgen::Builder::default()
+log!("Found WINAPI version: {:?}", &include_ver);
+    
+let mut bindings_builder = bindgen::Builder::default()
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .header_contents(
             "wrapper.h",
             r#"
-            #define PHNT_MODE PHNT_MODE_USER
-            #define PHNT_VERSION PHNT_WINDOWS_11
-            #define _WIN32_WINNT 0x0A00
-            #define WIN32_LEAN_AND_MEAN
-            #define NOMINMAX
+#define PHNT_MODE PHNT_MODE_USER
+#define PHNT_VERSION PHNT_WINDOWS_11
+#define _WIN32_WINNT 0x0A00
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#define WINNT_NO_DEPRECATE
 
-            #include <phnt_windows.h>
-            #include <phnt.h>
-
-            #include <tlhelp32.h>
-            #include <psapi.h>
-            #include <winuser.h>
-            "#,
+#include <phnt_windows.h>
+#include <phnt.h>
+#include <ntpsapi.h>
+#include <ntpebteb.h>
+#include <tlhelp32.h>
+#include <psapi.h>
+#include <winuser.h>
+"#,
         )
-        .clang_arg("-I./phnt".to_string())
-        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um")
-        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared")
-        // .clang_arg("-IC:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt")
-        .clang_arg(format!("-I{}", include_ver.join("um").display()))
-        .clang_arg(format!("-I{}", include_ver.join("shared").display()))
-        .clang_arg(format!("-I{}", include_ver.join("ucrt").display()))
         .clang_arg("-fms-compatibility")
         .clang_arg("-fms-extensions")
+        .clang_arg("-D_WIN64")
         .clang_arg("--target=x86_64-pc-windows-msvc")
         .allowlist_recursively(true)
         .allowlist_type(".*")
         .allowlist_function(".*")
+        .blocklist_type("winternl.*")
         .layout_tests(false)
-        .generate_comments(false)
-        .generate()
-        .expect("Unable to generate bindings");
+        .generate_comments(false);
+
+    #[cfg(not(windows))]
+    {
+        // IMPORTANT: phnt must come FIRST to override incomplete Windows SDK definitions
+        bindings_builder = bindings_builder
+            .clang_arg("-I./phnt".to_string())
+            .clang_arg(format!("-I{}", kits.join("crt").join("include").display()))
+            .clang_arg(format!("-I{}", include_ver.join("ucrt").display()))
+            .clang_arg(format!("-I{}", include_ver.join("shared").display()))
+            .clang_arg(format!("-I{}", include_ver.join("um").display()));
+    }
+
+    #[cfg(windows)]
+    {
+        bindings_builder = bindings_builder.clang_arg("-I./phnt".to_string());
+    }
+
+    let bindings = bindings_builder.generate().expect("Unable to generate bindings");
 
     let raw_bindings_path = PathBuf::from(out_dir).join("raw_bindings.rs");
     bindings
