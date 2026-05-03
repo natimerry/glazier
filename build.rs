@@ -112,7 +112,8 @@ Looked in HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots (and WOW6432Node)
 
 #[cfg(not(windows))]
 fn windows_kits_root10() -> PathBuf {
-    PathBuf::from("./windows-kit")
+    let project_dir = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(project_dir).join("windows-kit")
 }
 
 #[cfg(windows)]
