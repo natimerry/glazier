@@ -104,7 +104,7 @@ fn windows_kits_root10() -> PathBuf {
         }
     }
 
-panic!(
+    panic!(
         r#"Windows SDK not found: registry value KitsRoot10 missing.
 Looked in HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots (and WOW6432Node)."#
     );
@@ -159,10 +159,7 @@ fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
     log!("Using local xwin include dir: {:?}", include_root);
 
     if !include_root.exists() {
-        panic!(
-            "Windows SDK include root not found: {:?}",
-            include_root
-        );
+        panic!("Windows SDK include root not found: {:?}", include_root);
     }
 
     include_root
@@ -174,9 +171,9 @@ fn generate_winapi_bindings(out_dir: &str) {
     let kits = windows_kits_root10();
     let include_ver = newest_windows_sdk_include_dir(&kits);
 
-log!("Found WINAPI version: {:?}", &include_ver);
-    
-let mut bindings_builder = bindgen::Builder::default()
+    log!("Found WINAPI version: {:?}", &include_ver);
+
+    let mut bindings_builder = bindgen::Builder::default()
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
         .header_contents(
             "wrapper.h",
@@ -210,7 +207,8 @@ let mut bindings_builder = bindgen::Builder::default()
 
     #[cfg(not(windows))]
     {
-        // IMPORTANT: phnt must come FIRST to override incomplete Windows SDK definitions
+        // IMPORTANT: phnt must come FIRST to override incomplete Windows SDK
+        // definitions
         bindings_builder = bindings_builder
             .clang_arg("-I./phnt".to_string())
             .clang_arg(format!("-I{}", kits.join("crt").join("include").display()))
@@ -224,7 +222,9 @@ let mut bindings_builder = bindgen::Builder::default()
         bindings_builder = bindings_builder.clang_arg("-I./phnt".to_string());
     }
 
-    let bindings = bindings_builder.generate().expect("Unable to generate bindings");
+    let bindings = bindings_builder
+        .generate()
+        .expect("Unable to generate bindings");
 
     let raw_bindings_path = PathBuf::from(out_dir).join("raw_bindings.rs");
     bindings

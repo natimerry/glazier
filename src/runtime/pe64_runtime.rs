@@ -18,8 +18,9 @@ use std::mem::offset_of;
 use windows_sys::Win32::System::Threading::TEB;
 use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
 
-// Use manual PEB_LDR_DATA definition because bindgen generates incomplete structs
-// when running on non-Windows hosts (Linux/macOS), even when cross-compiling to Windows
+// Use manual PEB_LDR_DATA definition because bindgen generates incomplete
+// structs when running on non-Windows hosts (Linux/macOS), even when
+// cross-compiling to Windows
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
 #[allow(nonstandard_style)]

@@ -1,9 +1,9 @@
+use libwinexploit::utils::to_wide;
 use libwinexploit::winapi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
-use libwinexploit::utils::to_wide;
 fn main() {
     env_logger::init();
-    
+
     unsafe {
         let user32_name = to_wide("User32.dll");
         let h_module = LoadLibraryW(user32_name.as_ptr());
