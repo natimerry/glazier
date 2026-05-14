@@ -578,7 +578,7 @@ impl Trampoline {
                 copysize = size_of_val(&jmp) as u32;
                 finished = true;
             } else if (hs.modrm & 0xC7) == 0x05 {
-                println!("RIP RELATIVE OVERRIDE");
+                trace!("RIP relative override");
                 // Instructions using RIP relative addressing. (ModR/M = 00???101B)
                 // std::ptr::copy_nonoverlapping(
                 //     old_inst as *const u8,
