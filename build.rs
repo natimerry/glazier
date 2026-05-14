@@ -174,7 +174,7 @@ fn generate_winapi_bindings(out_dir: &str) {
     log!("Found WINAPI version: {:?}", &include_ver);
 
     let mut bindings_builder = bindgen::Builder::default()
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .header_contents(
             "wrapper.h",
             r#"
