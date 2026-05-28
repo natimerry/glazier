@@ -36,7 +36,9 @@ impl PE64Runtime<LocalMemory> {
                 let ssn = ((ssn_high as u16) << 8) | (ssn_low as u16);
                 return Ok(ssn);
             }
-            let func_name = exported_func.name.clone().unwrap();
+            let func_name = exported_func.name.clone().ok_or_else(|| {
+                ExpError::ExportError("Unnamed export has no syscall name".into())
+            })?;
 
             let control_flow_ops = [
                 0xE8, // call rel32
@@ -60,7 +62,7 @@ impl PE64Runtime<LocalMemory> {
 
             Err(ExpError::ExportError(format!(
                 "Pattern mismatch for {}. Could not identify syscall stub.",
-                exported_func.name.unwrap().to_string()
+                func_name
             )))
         }
     }
@@ -352,11 +354,12 @@ impl PE64Static {
 
         // Initialize Parsed Functions
         for (i, &rva) in func_rvas.iter().enumerate() {
+            let func_addr = self.rva_to_offset(rva).unwrap_or(0) as usize;
             functions.push(ParsedExportFunction {
                 name: None,
                 ordinal: descriptor.base + (i as u32), // Base + Index
                 func_rva: rva,
-                func_addr: self.rva_to_offset(rva).unwrap() as usize,
+                func_addr,
                 forwarder: None,
             });
         }

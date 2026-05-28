@@ -164,7 +164,9 @@ impl PE64Static {
                 desc.first_thunk
             };
 
-            let lookup_offset = self.rva_to_offset(lookup_rva).unwrap();
+            let lookup_offset = self
+                .rva_to_offset(lookup_rva)
+                .ok_or_else(|| ExpError::ParseError("Invalid import lookup RVA".into()))?;
 
             let mut functions = Vec::new();
 

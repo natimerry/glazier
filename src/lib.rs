@@ -3,6 +3,7 @@
 use thiserror::Error;
 
 pub mod consts;
+#[cfg(feature = "runtime")]
 pub mod hde;
 pub mod pe;
 #[cfg(feature = "runtime")]
@@ -12,8 +13,10 @@ pub mod utils;
 // reexport
 pub use consts::*;
 pub use pe::pe64_static::*;
+#[cfg(feature = "runtime")]
 pub use runtime::*;
 
+#[cfg(feature = "runtime")]
 pub mod hooking;
 #[cfg(not(target_arch = "x86_64"))]
 compile_error!("This crate only supports x86_64");

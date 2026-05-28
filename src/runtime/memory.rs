@@ -4,7 +4,13 @@ use crate::winapi::DWORD;
 use crate::winapi::HANDLE;
 use crate::winapi::LPVOID;
 use crate::winapi::MEMORY_BASIC_INFORMATION;
+#[cfg(not(feature = "hells_gate"))]
+use crate::winapi::NtReadVirtualMemory;
+#[cfg(feature = "hells_gate")]
 use crate::winapi::NtReadVirtualMemoryHellsGate;
+#[cfg(not(feature = "hells_gate"))]
+use crate::winapi::NtWriteVirtualMemory;
+#[cfg(feature = "hells_gate")]
 use crate::winapi::NtWriteVirtualMemoryHellsGate;
 use crate::winapi::PDWORD;
 use crate::winapi::ReadProcessMemory;

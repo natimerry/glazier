@@ -3,6 +3,7 @@ use crate::ExpError::ParseError;
 use crate::pe::PESection;
 use std::arch::global_asm;
 use std::mem;
+#[cfg(feature = "runtime")]
 use windows_sys::Win32::System::Threading::TEB;
 
 #[macro_export]
@@ -42,6 +43,7 @@ unsafe fn readqgsword(offset: usize) -> u64 {
     }
     result
 }
+#[cfg(feature = "runtime")]
 include!(concat!(env!("OUT_DIR"), "/teb_asm.rs"));
 
 pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(

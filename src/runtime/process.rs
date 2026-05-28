@@ -124,9 +124,9 @@ impl Process {
             };
 
             if exe_name.eq_ignore_ascii_case(&target_name) {
-                pids.push(
-                    Process::from_pid(pe32.th32ProcessID, access).expect("Unable to open process"),
-                );
+                if let Ok(process) = Process::from_pid(pe32.th32ProcessID, access) {
+                    pids.push(process);
+                }
             }
 
             if unsafe { Process32Next(snapshot, &mut pe32) } == 0 {

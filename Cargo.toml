@@ -17,7 +17,52 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHe
 default = ["runtime","obfuscation","hells_gate"]
 obfuscation = ["dep:obfstr","runtime"]
 runtime = []
-hells_gate = []
+hells_gate = ["runtime"]
+
+[[bin]]
+name = "get_remote_dlls_winapi"
+path = "src/bin/get_remote_dlls_winapi.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "get_self_dlls"
+path = "src/bin/get_self_dlls.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "hells_gate"
+path = "src/bin/hells_gate.rs"
+required-features = ["hells_gate"]
+
+[[bin]]
+name = "hells_gate_auto_binded"
+path = "src/bin/hells_gate_auto_binded.rs"
+required-features = ["hells_gate"]
+
+[[bin]]
+name = "hells_query_systime"
+path = "src/bin/hells_query_systime.rs"
+required-features = ["hells_gate"]
+
+[[bin]]
+name = "hook"
+path = "src/bin/hook.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "hookpattern"
+path = "src/bin/hookpattern.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "process"
+path = "src/bin/process.rs"
+required-features = ["runtime"]
+
+[[bin]]
+name = "read_pe_file"
+path = "src/bin/read_pe_file.rs"
+required-features = ["runtime"]
 
 [profile.release]
 opt-level = "z"

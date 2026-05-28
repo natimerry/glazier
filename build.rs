@@ -289,7 +289,11 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
 
     writeln!(output).unwrap();
 
-    writeln!(output, "#[cfg(feature = \"obfuscation\")]").unwrap();
+    writeln!(
+        output,
+        "#[cfg(any(feature = \"obfuscation\", feature = \"hells_gate\"))]"
+    )
+    .unwrap();
     writeln!(output, "use crate::runtime::pe64_runtime::PE64Runtime;").unwrap();
     writeln!(output, "use crate::utils::to_wide;").unwrap();
 

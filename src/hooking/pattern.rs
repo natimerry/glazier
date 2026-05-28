@@ -242,7 +242,7 @@ impl Pattern {
 
                     let matched = if no_wildcards {
                         data[i..i + n]
-                            == self.bytes.iter().map(|x| x.unwrap()).collect::<Vec<_>>()[..]
+                            == self.bytes.iter().filter_map(|x| *x).collect::<Vec<_>>()[..]
                     } else {
                         self.bytes
                             .iter()
@@ -389,7 +389,9 @@ impl ConcreteRun {
             if len >= MIN_RUN {
                 let mut run_bytes = Vec::with_capacity(len);
                 for b in &bytes[start..i] {
-                    run_bytes.push(b.unwrap());
+                    if let Some(byte) = b {
+                        run_bytes.push(*byte);
+                    }
                 }
 
                 runs.push(ConcreteRun {

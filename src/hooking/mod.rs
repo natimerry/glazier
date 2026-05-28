@@ -110,7 +110,10 @@ unsafe fn check_address_executable(address: *mut u8, handle: Option<HANDLE>) -> 
     return mi.State == 0x00001000 && (mi.Protect & (0x10 | 0x20 | 0x40 | 0x80)) != 0;
 }
 
-unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut MemoryBlock {
+unsafe fn get_memory_block<M: MemoryView>(
+    origin: *mut u8,
+    m: &M,
+) -> Result<*mut MemoryBlock, ExpError> {
     let mut si: SYSTEM_INFO = std::mem::zeroed();
     GetSystemInfo(&mut si);
 
@@ -133,16 +136,13 @@ unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut Memory
     let mut block = MEMORY_BLOCKS;
     while !block.is_null() {
         let addr = block as usize;
+        let current_block = m.read::<MemoryBlock>(block as u64)?;
         if addr >= min_addr && addr < max_addr {
-            if !(m.read::<MemoryBlock>(block as u64))
-                .expect("Failed to read memory block")
-                .free
-                .is_null()
-            {
-                return block;
+            if !current_block.free.is_null() {
+                return Ok(block);
             }
         }
-        block = m.read::<MemoryBlock>(block as u64).unwrap().next;
+        block = current_block.next;
     }
 
     // Try allocate new block below origin
@@ -174,8 +174,8 @@ unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut Memory
         } as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(m, new_block).unwrap();
-            return new_block;
+            initialize_block(m, new_block)?;
+            return Ok(new_block);
         }
     }
 
@@ -194,12 +194,12 @@ unsafe fn get_memory_block<M: MemoryView>(origin: *mut u8, m: &M) -> *mut Memory
             as *mut MemoryBlock;
 
         if !new_block.is_null() {
-            initialize_block(m, new_block).unwrap();
-            return new_block;
+            initialize_block(m, new_block)?;
+            return Ok(new_block);
         }
     }
 
-    null_mut()
+    Ok(null_mut())
 }
 
 unsafe fn initialize_block<M: MemoryView>(m: &M, block: *mut MemoryBlock) -> Result<(), ExpError> {
@@ -285,30 +285,29 @@ unsafe fn find_next_free_region<M: MemoryView>(
     0
 }
 
-pub unsafe fn allocate_buffer<M: MemoryView>(origin: *mut u8, m: &M) -> *mut u8 {
-    let block = get_memory_block(origin, m);
+pub unsafe fn allocate_buffer<M: MemoryView>(origin: *mut u8, m: &M) -> Result<*mut u8, ExpError> {
+    let block = get_memory_block(origin, m)?;
     if block.is_null() {
-        return null_mut();
+        return Ok(null_mut());
     }
 
     let slot = (*block).free;
     if slot.is_null() {
-        return null_mut();
+        return Ok(null_mut());
     }
 
-    let mut b = m.read::<MemoryBlock>(block as u64).unwrap();
-    let s = m.read::<MemorySlot>(b.free as u64).unwrap();
+    let mut b = m.read::<MemoryBlock>(block as u64)?;
+    let s = m.read::<MemorySlot>(b.free as u64)?;
 
     b.free = s.next;
     b.used_count += 1;
 
-    m.write::<MemoryBlock>(block as u64, b).unwrap();
+    m.write::<MemoryBlock>(block as u64, b)?;
 
     // Debug fill
-    m.write_bytes(slot as u64, &[0xCC; MEMORY_SLOT_SIZE])
-        .unwrap();
+    m.write_bytes(slot as u64, &[0xCC; MEMORY_SLOT_SIZE])?;
 
-    slot as *mut u8
+    Ok(slot as *mut u8)
 }
 
 impl HookEntry {
@@ -348,7 +347,7 @@ impl HookEntry {
                 return Err(HookError::InvalidPointer);
             }
 
-            let buffer_addr = allocate_buffer(target, &m);
+            let buffer_addr = allocate_buffer(target, &m)?;
             if buffer_addr.is_null() {
                 return Err(HookError::AllocationFailed);
             }
@@ -376,7 +375,7 @@ impl HookEntry {
 
             hook.backup.resize(size, 0);
 
-            hook.backup = m.read_bytes(src as u64, size).unwrap().try_into().unwrap();
+            hook.backup = m.read_bytes(src as u64, size)?;
 
             return Ok(hook);
         }
@@ -419,8 +418,7 @@ impl HookEntry {
             }
         } else {
             // Disable: restore original bytes from backup
-            m.copy_non_overlapping(self.backup.as_ptr() as u64, patch_target as u64, patch_size)
-                .unwrap();
+            m.copy_non_overlapping(self.backup.as_ptr() as u64, patch_target as u64, patch_size)?;
         }
 
         m.virtual_protect(patch_target, patch_size, old_protect, &mut old_protect);
@@ -550,7 +548,8 @@ impl Trampoline {
             let old_inst = ct.target.offset(old_pos as isize);
             let new_inst = ct.trampoline.offset(new_pos as isize);
 
-            copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m);
+            copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m)
+                .map_err(|_| HookError::DisassemblyError)?;
 
             trace!(
                 "old_pos={} old_inst=0x{:x} opcode={:02x} modrm={:02x} len={} copySize={}",
