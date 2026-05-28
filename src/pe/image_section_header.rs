@@ -1,6 +1,7 @@
 use crate::ByteReader;
 use crate::ExpError;
 use crate::pe::PESection;
+use crate::pe::pe32_static::PE32Static;
 use crate::pe::pe64_static::PE64Static;
 
 #[repr(C)]
@@ -31,6 +32,19 @@ impl ImageSectionHeader {
         }
         name_str
     }
+
+    pub fn resolve_section_name32<R: ByteReader>(&self, pe: &PE32Static, reader: &mut R) -> String {
+        let name_str = String::from_utf8_lossy(&self.name)
+            .trim_matches('\0')
+            .to_string();
+
+        if let Some(name_str) = name_str.strip_prefix('/')
+            && let Ok(offset) = name_str.parse::<u32>()
+        {
+            return read_coff_string32(pe, offset, reader).unwrap_or(name_str.to_string());
+        }
+        name_str
+    }
 }
 
 fn read_coff_string<R: ByteReader>(
@@ -42,6 +56,27 @@ fn read_coff_string<R: ByteReader>(
 
     if file_header.pointer_to_symbol_table == 0 {
         return Ok(format!("/{}", string_table_offset)); // Fallback if stripped
+    }
+
+    let symbol_table_size = file_header.number_of_symbols * 18;
+    let string_table_base = file_header.pointer_to_symbol_table + symbol_table_size;
+
+    let target_offset = string_table_base + string_table_offset;
+
+    reader.seek(target_offset as usize)?;
+
+    reader.read_c_string()
+}
+
+fn read_coff_string32<R: ByteReader>(
+    pe: &PE32Static,
+    string_table_offset: u32,
+    reader: &mut R,
+) -> Result<String, ExpError> {
+    let file_header = &pe.image_nt_headers32.file_header;
+
+    if file_header.pointer_to_symbol_table == 0 {
+        return Ok(format!("/{}", string_table_offset));
     }
 
     let symbol_table_size = file_header.number_of_symbols * 18;

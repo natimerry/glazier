@@ -14,6 +14,18 @@ impl PESection for ImageNtHeaders64 {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
+pub struct ImageNtHeaders32 {
+    pub signature: u32,
+    pub file_header: ImageFileHeader,
+    pub optional_header: ImageOptionalHeader32,
+}
+
+impl PESection for ImageNtHeaders32 {
+    fn is_valid(&self) -> bool { self.signature == 0x00004550 }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
 pub struct ImageFileHeader {
     pub machine: u16,            // 0x8664 for AMD64
     pub number_of_sections: u16, // Number of sections to parse later
@@ -68,6 +80,46 @@ pub struct ImageOptionalHeader64 {
 
 impl PESection for ImageOptionalHeader64 {
     fn is_valid(&self) -> bool { self.magic == 0x20B }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct ImageOptionalHeader32 {
+    pub magic: u16, // 0x10B for PE32 (32-bit)
+    pub major_linker_version: u8,
+    pub minor_linker_version: u8,
+    pub size_of_code: u32,
+    pub size_of_initialized_data: u32,
+    pub size_of_uninitialized_data: u32,
+    pub address_of_entry_point: u32,
+    pub base_of_code: u32,
+    pub base_of_data: u32,
+    pub image_base: u32,
+    pub section_alignment: u32,
+    pub file_alignment: u32,
+    pub major_operating_system_version: u16,
+    pub minor_operating_system_version: u16,
+    pub major_image_version: u16,
+    pub minor_image_version: u16,
+    pub major_subsystem_version: u16,
+    pub minor_subsystem_version: u16,
+    pub win32_version_value: u32,
+    pub size_of_image: u32,
+    pub size_of_headers: u32,
+    pub check_sum: u32,
+    pub subsystem: u16,
+    pub dll_characteristics: u16,
+    pub size_of_stack_reserve: u32,
+    pub size_of_stack_commit: u32,
+    pub size_of_heap_reserve: u32,
+    pub size_of_heap_commit: u32,
+    pub loader_flags: u32,
+    pub number_of_rva_and_sizes: u32,
+    pub data_directory: [ImageDataDirectory; 16],
+}
+
+impl PESection for ImageOptionalHeader32 {
+    fn is_valid(&self) -> bool { self.magic == 0x10B }
 }
 
 #[repr(C)]
