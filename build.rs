@@ -173,6 +173,9 @@ fn generate_winapi_bindings(out_dir: &str) {
 
     log!("Found WINAPI version: {:?}", &include_ver);
 
+    let target = env::var("TARGET").unwrap_or_else(|_| "x86_64-pc-windows-msvc".to_string());
+    let is_64_bit = target.contains("x86_64") || target.contains("aarch64");
+
     let mut bindings_builder = bindgen::Builder::default()
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .header_contents(
@@ -196,14 +199,17 @@ fn generate_winapi_bindings(out_dir: &str) {
         )
         .clang_arg("-fms-compatibility")
         .clang_arg("-fms-extensions")
-        .clang_arg("-D_WIN64")
-        .clang_arg("--target=x86_64-pc-windows-msvc")
+        .clang_arg(format!("--target={}", target))
         .allowlist_recursively(true)
         .allowlist_type(".*")
         .allowlist_function(".*")
         .blocklist_type("winternl.*")
         .layout_tests(false)
         .generate_comments(false);
+
+    if is_64_bit {
+        bindings_builder = bindings_builder.clang_arg("-D_WIN64");
+    }
 
     #[cfg(not(windows))]
     {

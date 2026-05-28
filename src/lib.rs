@@ -12,14 +12,19 @@ pub mod utils;
 
 // reexport
 pub use consts::*;
+pub use pe::pe32_static::*;
 pub use pe::pe64_static::*;
 #[cfg(feature = "runtime")]
 pub use runtime::*;
 
 #[cfg(feature = "runtime")]
 pub mod hooking;
-#[cfg(not(target_arch = "x86_64"))]
-compile_error!("This crate only supports x86_64");
+
+#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
+compile_error!("This crate only supports x86 and x86_64");
+
+#[cfg(all(feature = "hells_gate", not(target_arch = "x86_64")))]
+compile_error!("The hells_gate feature only supports x86_64");
 
 #[derive(Error, Debug)]
 pub enum ExpError {

@@ -1,6 +1,7 @@
 use crate::ExpError;
 use crate::ExpError::ParseError;
 use crate::pe::PESection;
+#[cfg(target_arch = "x86_64")]
 use std::arch::global_asm;
 use std::mem;
 #[cfg(feature = "runtime")]
@@ -43,6 +44,21 @@ unsafe fn readqgsword(offset: usize) -> u64 {
     }
     result
 }
+#[cfg(target_arch = "x86")]
+#[cfg(feature = "runtime")]
+#[inline(always)]
+pub unsafe fn get_teb() -> *mut TEB {
+    let teb: *mut TEB;
+    unsafe {
+        core::arch::asm!(
+            "mov {}, fs:[0x18]",
+            out(reg) teb,
+            options(nostack, preserves_flags)
+        );
+    }
+    teb
+}
+#[cfg(target_arch = "x86_64")]
 #[cfg(feature = "runtime")]
 include!(concat!(env!("OUT_DIR"), "/teb_asm.rs"));
 
@@ -62,6 +78,7 @@ pub fn cast_from_mem<R: std::io::Read, T: Sized + PESection + Clone>(
         Ok(header.clone())
     }
 }
+#[cfg(target_arch = "x86_64")]
 global_asm!(
     r#"
     .section .text
@@ -97,6 +114,7 @@ do_syscall:
     "#
 );
 
+#[cfg(target_arch = "x86_64")]
 unsafe extern "C" {
     // We shift arguments by 1 because SSN is the first arg
     pub fn do_syscall(ssn: u16, ...) -> i32;

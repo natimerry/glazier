@@ -4,7 +4,10 @@ use crate::ExpError;
 use crate::hde::hde64_disasm;
 use crate::hde::hde64s;
 use crate::runtime::memory::MemoryView;
-use crate::runtime::pe64_runtime::PE64Runtime;
+#[cfg(target_arch = "x86")]
+use crate::runtime::pe32_runtime::PE32Runtime as NativePERuntime;
+#[cfg(target_arch = "x86_64")]
+use crate::runtime::pe64_runtime::PE64Runtime as NativePERuntime;
 use crate::winapi::FlushInstructionCache;
 use crate::winapi::GetCurrentProcess;
 use crate::winapi::GetSystemInfo;
@@ -319,8 +322,8 @@ impl HookEntry {
         detour: *mut u8,
     ) -> Result<Self, HookError> {
         let runtime = match module_name {
-            Some(module) => PE64Runtime::from_module(module)?,
-            None => PE64Runtime::from_current_module()?,
+            Some(module) => NativePERuntime::from_module(module)?,
+            None => NativePERuntime::from_current_module()?,
         };
 
         let runtime_addr = runtime.find_export(func_name.to_string())?;
@@ -497,218 +500,343 @@ impl Trampoline {
         trampoline: *mut u8,
         m: &M,
     ) -> Result<Self, HookError> {
-        let mut call = CallAbs {
-            opcode0: 0xFF,
-            opcode1: 0x15,
-            dummy0: 0x00000002, // FF15 00000002: CALL [+6]
-            dummy1: 0xEB,
-            dummy2: 0x08,                // EB 08:         JMP +10
-            address: 0x0000000000000000, // Absolute destination address
-        };
+        #[cfg(target_arch = "x86")]
+        {
+            return Self::new_x86(target, detour, trampoline, m);
+        }
 
-        let mut jmp = JmpAbs {
-            opcode0: 0xff,
-            opcode1: 0x25,
-            dummy: 0x0,
-            address: 0,
-        };
+        #[cfg(target_arch = "x86_64")]
+        {
+            let mut call = CallAbs {
+                opcode0: 0xFF,
+                opcode1: 0x15,
+                dummy0: 0x00000002, // FF15 00000002: CALL [+6]
+                dummy1: 0xEB,
+                dummy2: 0x08,                // EB 08:         JMP +10
+                address: 0x0000000000000000, // Absolute destination address
+            };
 
-        let mut jcc = JccAbs {
-            opcode: 0x70,
-            dummy0: 0x0e,
-            dummy1: 0xff,
-            dummy2: 0x25,
-            dummy3: 0x0,
-            address: 0x0,
-        };
+            let mut jmp = JmpAbs {
+                opcode0: 0xff,
+                opcode1: 0x25,
+                dummy: 0x0,
+                address: 0,
+            };
 
+            let mut jcc = JccAbs {
+                opcode: 0x70,
+                dummy0: 0x0e,
+                dummy1: 0xff,
+                dummy2: 0x25,
+                dummy3: 0x0,
+                address: 0x0,
+            };
+
+            let mut old_pos = 0u8;
+            let mut new_pos = 0u8;
+            let mut jmp_dest = 0u64;
+
+            let mut inst_buffer = [0u8; 16];
+
+            let mut finished = false;
+            let mut ct = Self {
+                target,
+                detour,
+                trampoline,
+                relay: null_mut(),
+                patch_above: false,
+                num_ips: 0,
+                old_ips: [0; 8],
+                new_ips: [0; 8],
+            };
+
+            while !finished {
+                let mut hs = hde64s::default();
+                let mut copysize = 0;
+                let mut copysrc: LPVOID = null_mut();
+
+                let old_inst = ct.target.offset(old_pos as isize);
+                let new_inst = ct.trampoline.offset(new_pos as isize);
+
+                copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m)
+                    .map_err(|_| HookError::DisassemblyError)?;
+
+                trace!(
+                    "old_pos={} old_inst=0x{:x} opcode={:02x} modrm={:02x} len={} copySize={}",
+                    old_pos, old_inst as usize, hs.opcode, hs.modrm, hs.len, copysize
+                );
+
+                match hs.opcode {
+                    0xE8 => trace!("  → CALL"),
+                    0xE9 | 0xEB => trace!("  → JMP"),
+                    0x70..=0x7F | 0x0F if hs.opcode2 & 0xF0 == 0x80 => trace!("  → Jcc"),
+                    0xC2 | 0xC3 => trace!("  → RET"),
+                    _ if (hs.modrm & 0xC7) == 0x05 => trace!("  → RIP-relative"),
+                    _ => trace!("  → COPY"),
+                }
+
+                if (hs.flags & crate::hde::F_ERROR) != 0 {
+                    return Err(HookError::DisassemblyError);
+                }
+
+                copysrc = old_inst as LPVOID;
+
+                if old_pos as usize >= size_of::<JmpRel>() {
+                    jmp.address = old_inst as u64;
+                    copysrc = &jmp as *const _ as LPVOID;
+                    copysize = size_of_val(&jmp) as u32;
+                    finished = true;
+                } else if (hs.modrm & 0xC7) == 0x05 {
+                    trace!("RIP relative override");
+                    // Instructions using RIP relative addressing. (ModR/M = 00???101B)
+                    // std::ptr::copy_nonoverlapping(
+                    //     old_inst as *const u8,
+                    //     inst_buffer.as_mut_ptr(),
+                    //     hs.len as usize, // Use hs.len, not copysize
+                    // );
+
+                    m.copy_non_overlapping(
+                        old_inst as u64,
+                        inst_buffer.as_mut_ptr() as u64,
+                        hs.len as usize,
+                    );
+
+                    copysrc = inst_buffer.as_mut_ptr() as LPVOID;
+
+                    // Relative address is stored at (instruction length - immediate value length -
+                    // 4).
+                    let disp_size = ((hs.flags & 0x3C) >> 2) as isize;
+                    let rel_addr = inst_buffer
+                        .as_mut_ptr()
+                        .offset(hs.len as isize)
+                        .offset(-disp_size)
+                        .offset(-4) as u64;
+
+                    let old_target = old_inst
+                        .offset(hs.len as isize)
+                        .offset(hs.disp.disp32 as isize);
+                    let new_base = new_inst.offset(hs.len as isize);
+                    let delta: isize = old_target.offset_from(new_base);
+
+                    if delta < i32::MIN as isize || delta > i32::MAX as isize {
+                        return Err(HookError::TrampolineError);
+                    }
+
+                    m.write::<u32>(rel_addr, delta as i32 as u32)?;
+
+                    // Complete the function if JMP (FF /4).
+                    if hs.opcode == 0xFF && hs.modrm_reg == 4 {
+                        finished = true;
+                    }
+                } else if hs.opcode == 0xE8 {
+                    // Direct relative CALL
+                    let dest = old_inst
+                        .offset(hs.len as isize)
+                        .offset(hs.imm.imm32 as i32 as isize) as u64;
+
+                    call.address = dest;
+                    copysrc = &call as *const _ as LPVOID;
+
+                    copysize = size_of_val(&call) as u32;
+                } else if (hs.opcode & 0xFD) == 0xE9 {
+                    // Direct relative JMP (EB or E9)
+                    let mut dest = old_inst.offset(hs.len as isize) as u64;
+
+                    // short jmp
+                    if hs.opcode == 0xEB {
+                        dest += hs.imm.imm8 as u64;
+                    } else {
+                        dest += hs.imm.imm32 as u64;
+                    }
+
+                    let start = ct.target as u64;
+                    let end = start + core::mem::size_of::<JmpRel>() as u64;
+
+                    if start <= dest && dest < end {
+                        if jmp_dest < dest {
+                            jmp_dest = dest;
+                        }
+                    } else {
+                        jmp.address = dest;
+
+                        copysrc = &jmp as *const _ as LPVOID;
+                        copysize = size_of_val(&jmp) as u32;
+
+                        finished = old_inst as u64 >= jmp_dest;
+                    }
+                } else if (hs.opcode & 0xF0) == 0x70
+                    || (hs.opcode & 0xFC) == 0xE0
+                    || (hs.opcode2 & 0xF0) == 0x80
+                {
+                    let mut dest = old_inst.offset(hs.len as isize) as u64;
+
+                    if (hs.opcode & 0xF0) == 0x70      // Jcc
+                    || (hs.opcode & 0xFC) == 0xE0
+                    // LOOPNZ/LOOPZ/LOOP/JECXZ
+                    {
+                        dest += hs.imm.imm8 as u64;
+                    } else {
+                        dest += hs.imm.imm32 as u64;
+                    }
+
+                    let start = ct.target as u64;
+                    let end = start + core::mem::size_of::<JmpRel>() as u64;
+
+                    if start <= dest && dest < end {
+                        if jmp_dest < dest {
+                            jmp_dest = dest;
+                        }
+                    } else if (hs.opcode & 0xFC) == 0xE0 {
+                        return Err(HookError::DisassemblyError);
+                    } else {
+                        let cond: u8 = {
+                            let opcode = if hs.opcode != 0x0F {
+                                hs.opcode
+                            } else {
+                                hs.opcode2
+                            };
+
+                            opcode & 0x0F
+                        };
+
+                        // Invert the condition in x64 mode to simplify the conditional jump logic.
+                        jcc.opcode = 0x71 ^ cond;
+                        jcc.address = dest;
+
+                        copysrc = &jcc as *const _ as LPVOID;
+                        copysize = size_of::<JccAbs>() as u32;
+                    }
+                } else if (hs.opcode & 0xFE) == 0xC2 {
+                    // we reached ret
+                    finished = old_inst as u64 >= jmp_dest;
+                }
+                if (old_inst as u64) < jmp_dest && copysize != hs.len as u32 {
+                    return Err(HookError::TrampolineError);
+                }
+
+                if (new_pos as u64 + copysize as u64) > ((64 - size_of::<JmpAbs>()) as u64) {
+                    return Err(HookError::TrampolineError);
+                }
+
+                if (ct.num_ips as u64 >= ct.old_ips.len() as u64) {
+                    return Err(HookError::TrampolineError);
+                }
+
+                ct.old_ips[ct.num_ips as usize] = old_pos;
+                ct.new_ips[ct.num_ips as usize] = new_pos;
+                ct.num_ips += 1;
+
+                m.copy_non_overlapping(
+                    copysrc as u64,
+                    ct.trampoline.add(new_pos as usize) as u64,
+                    copysize as usize,
+                );
+
+                debug_assert!(copysize > 0);
+                debug_assert!((new_pos as usize + copysize as usize) <= 64 - size_of::<JmpAbs>());
+
+                new_pos += copysize as u8;
+                old_pos += hs.len;
+            }
+
+            // try jong jmp
+            //
+            if (old_pos as usize) < size_of::<JmpRel>()
+                && !Self::is_code_padding(
+                    m,
+                    ct.target.add(old_pos as usize) as u64,
+                    (size_of::<JmpRel>() as u64) - old_pos as u64,
+                )?
+            {
+                // Is there enough place for a short jump?
+                //
+                if (old_pos as usize) < size_of::<JmpRelShort>()
+                    && !Self::is_code_padding(
+                        m,
+                        ct.target.add(old_pos as usize) as u64,
+                        (size_of::<JmpRelShort>() as u64) - old_pos as u64,
+                    )?
+                {
+                    return Err(HookError::TrampolineError);
+                }
+
+                // Can we place the long jump above the function?
+                if !check_address_executable(
+                    ct.target.sub(size_of::<JmpRel>() as usize),
+                    m.get_handle(),
+                ) {
+                    return Err(HookError::TrampolineError);
+                }
+
+                if !Self::is_code_padding(
+                    m,
+                    ct.target.sub(size_of::<JmpRel>() as usize) as u64,
+                    size_of::<JmpRel>() as u64,
+                )? {
+                    return Err(HookError::TrampolineError);
+                }
+
+                ct.patch_above = true;
+            }
+
+            jmp.address = ct.detour as u64;
+            ct.relay = ct.trampoline.add(new_pos as usize);
+
+            // std::ptr::copy_nonoverlapping(
+            //     &jmp as *const _ as *const u8,
+            //     ct.relay,
+            //     std::mem::size_of_val(&jmp),
+            // );
+            //
+            m.copy_non_overlapping(
+                &jmp as *const _ as u64,
+                ct.relay as u64,
+                std::mem::size_of_val(&jmp),
+            );
+
+            return Ok(ct);
+        }
+    }
+
+    #[cfg(target_arch = "x86")]
+    unsafe fn new_x86<M: MemoryView>(
+        target: *mut u8,
+        detour: *mut u8,
+        trampoline: *mut u8,
+        m: &M,
+    ) -> Result<Self, HookError> {
         let mut old_pos = 0u8;
         let mut new_pos = 0u8;
-        let mut jmp_dest = 0u64;
-
-        let mut inst_buffer = [0u8; 16];
-
-        let mut finished = false;
         let mut ct = Self {
             target,
             detour,
             trampoline,
-            relay: null_mut(),
+            relay: detour,
             patch_above: false,
             num_ips: 0,
             old_ips: [0; 8],
             new_ips: [0; 8],
         };
 
-        while !finished {
+        while (old_pos as usize) < size_of::<JmpRel>() {
             let mut hs = hde64s::default();
-            let mut copysize = 0;
-            let mut copysrc: LPVOID = null_mut();
-
-            let old_inst = ct.target.offset(old_pos as isize);
-            let new_inst = ct.trampoline.offset(new_pos as isize);
-
-            copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m)
+            let old_inst = ct.target.add(old_pos as usize);
+            let copysize = hde64_disasm(old_inst as *const c_void, &mut hs, m)
                 .map_err(|_| HookError::DisassemblyError)?;
 
-            trace!(
-                "old_pos={} old_inst=0x{:x} opcode={:02x} modrm={:02x} len={} copySize={}",
-                old_pos, old_inst as usize, hs.opcode, hs.modrm, hs.len, copysize
-            );
-
-            match hs.opcode {
-                0xE8 => trace!("  → CALL"),
-                0xE9 | 0xEB => trace!("  → JMP"),
-                0x70..=0x7F | 0x0F if hs.opcode2 & 0xF0 == 0x80 => trace!("  → Jcc"),
-                0xC2 | 0xC3 => trace!("  → RET"),
-                _ if (hs.modrm & 0xC7) == 0x05 => trace!("  → RIP-relative"),
-                _ => trace!("  → COPY"),
-            }
-
-            if (hs.flags & crate::hde::F_ERROR) != 0 {
+            if (hs.flags & crate::hde::F_ERROR) != 0 || copysize == 0 {
                 return Err(HookError::DisassemblyError);
             }
 
-            copysrc = old_inst as LPVOID;
-
-            if old_pos as usize >= size_of::<JmpRel>() {
-                jmp.address = old_inst as u64;
-                copysrc = &jmp as *const _ as LPVOID;
-                copysize = size_of_val(&jmp) as u32;
-                finished = true;
-            } else if (hs.modrm & 0xC7) == 0x05 {
-                trace!("RIP relative override");
-                // Instructions using RIP relative addressing. (ModR/M = 00???101B)
-                // std::ptr::copy_nonoverlapping(
-                //     old_inst as *const u8,
-                //     inst_buffer.as_mut_ptr(),
-                //     hs.len as usize, // Use hs.len, not copysize
-                // );
-
-                m.copy_non_overlapping(
-                    old_inst as u64,
-                    inst_buffer.as_mut_ptr() as u64,
-                    hs.len as usize,
-                );
-
-                copysrc = inst_buffer.as_mut_ptr() as LPVOID;
-
-                // Relative address is stored at (instruction length - immediate value length -
-                // 4).
-                let disp_size = ((hs.flags & 0x3C) >> 2) as isize;
-                let rel_addr = inst_buffer
-                    .as_mut_ptr()
-                    .offset(hs.len as isize)
-                    .offset(-disp_size)
-                    .offset(-4) as u64;
-
-                let old_target = old_inst
-                    .offset(hs.len as isize)
-                    .offset(hs.disp.disp32 as isize);
-                let new_base = new_inst.offset(hs.len as isize);
-                let delta: isize = old_target.offset_from(new_base);
-
-                if delta < i32::MIN as isize || delta > i32::MAX as isize {
-                    return Err(HookError::TrampolineError);
-                }
-
-                m.write::<u32>(rel_addr, delta as i32 as u32)?;
-
-                // Complete the function if JMP (FF /4).
-                if hs.opcode == 0xFF && hs.modrm_reg == 4 {
-                    finished = true;
-                }
-            } else if hs.opcode == 0xE8 {
-                // Direct relative CALL
-                let dest = old_inst
-                    .offset(hs.len as isize)
-                    .offset(hs.imm.imm32 as i32 as isize) as u64;
-
-                call.address = dest;
-                copysrc = &call as *const _ as LPVOID;
-
-                copysize = size_of_val(&call) as u32;
-            } else if (hs.opcode & 0xFD) == 0xE9 {
-                // Direct relative JMP (EB or E9)
-                let mut dest = old_inst.offset(hs.len as isize) as u64;
-
-                // short jmp
-                if hs.opcode == 0xEB {
-                    dest += hs.imm.imm8 as u64;
-                } else {
-                    dest += hs.imm.imm32 as u64;
-                }
-
-                let start = ct.target as u64;
-                let end = start + core::mem::size_of::<JmpRel>() as u64;
-
-                if start <= dest && dest < end {
-                    if jmp_dest < dest {
-                        jmp_dest = dest;
-                    }
-                } else {
-                    jmp.address = dest;
-
-                    copysrc = &jmp as *const _ as LPVOID;
-                    copysize = size_of_val(&jmp) as u32;
-
-                    finished = old_inst as u64 >= jmp_dest;
-                }
-            } else if (hs.opcode & 0xF0) == 0x70
-                || (hs.opcode & 0xFC) == 0xE0
-                || (hs.opcode2 & 0xF0) == 0x80
-            {
-                let mut dest = old_inst.offset(hs.len as isize) as u64;
-
-                if (hs.opcode & 0xF0) == 0x70      // Jcc
-                    || (hs.opcode & 0xFC) == 0xE0
-                // LOOPNZ/LOOPZ/LOOP/JECXZ
-                {
-                    dest += hs.imm.imm8 as u64;
-                } else {
-                    dest += hs.imm.imm32 as u64;
-                }
-
-                let start = ct.target as u64;
-                let end = start + core::mem::size_of::<JmpRel>() as u64;
-
-                if start <= dest && dest < end {
-                    if jmp_dest < dest {
-                        jmp_dest = dest;
-                    }
-                } else if (hs.opcode & 0xFC) == 0xE0 {
-                    return Err(HookError::DisassemblyError);
-                } else {
-                    let cond: u8 = {
-                        let opcode = if hs.opcode != 0x0F {
-                            hs.opcode
-                        } else {
-                            hs.opcode2
-                        };
-
-                        opcode & 0x0F
-                    };
-
-                    // Invert the condition in x64 mode to simplify the conditional jump logic.
-                    jcc.opcode = 0x71 ^ cond;
-                    jcc.address = dest;
-
-                    copysrc = &jcc as *const _ as LPVOID;
-                    copysize = size_of::<JccAbs>() as u32;
-                }
-            } else if (hs.opcode & 0xFE) == 0xC2 {
-                // we reached ret
-                finished = old_inst as u64 >= jmp_dest;
-            }
-            if (old_inst as u64) < jmp_dest && copysize != hs.len as u32 {
+            if matches!(hs.opcode, 0xE8 | 0xE9 | 0xEB) || (0x70..=0x7F).contains(&hs.opcode) {
                 return Err(HookError::TrampolineError);
             }
 
-            if (new_pos as u64 + copysize as u64) > ((64 - size_of::<JmpAbs>()) as u64) {
+            if (new_pos as usize + copysize as usize + size_of::<JmpRel>()) > MEMORY_SLOT_SIZE {
                 return Err(HookError::TrampolineError);
             }
 
-            if (ct.num_ips as u64 >= ct.old_ips.len() as u64) {
+            if ct.num_ips as usize >= ct.old_ips.len() {
                 return Err(HookError::TrampolineError);
             }
 
@@ -717,74 +845,36 @@ impl Trampoline {
             ct.num_ips += 1;
 
             m.copy_non_overlapping(
-                copysrc as u64,
+                old_inst as u64,
                 ct.trampoline.add(new_pos as usize) as u64,
                 copysize as usize,
-            );
+            )?;
 
-            debug_assert!(copysize > 0);
-            debug_assert!((new_pos as usize + copysize as usize) <= 64 - size_of::<JmpAbs>());
-
+            old_pos += copysize as u8;
             new_pos += copysize as u8;
-            old_pos += hs.len;
         }
 
-        // try jong jmp
-        //
-        if (old_pos as usize) < size_of::<JmpRel>()
-            && !Self::is_code_padding(
-                m,
-                ct.target.add(old_pos as usize) as u64,
-                (size_of::<JmpRel>() as u64) - old_pos as u64,
-            )?
-        {
-            // Is there enough place for a short jump?
-            //
-            if (old_pos as usize) < size_of::<JmpRelShort>()
-                && !Self::is_code_padding(
-                    m,
-                    ct.target.add(old_pos as usize) as u64,
-                    (size_of::<JmpRelShort>() as u64) - old_pos as u64,
-                )?
-            {
-                return Err(HookError::TrampolineError);
-            }
+        let jmp_back_src = ct.trampoline.add(new_pos as usize);
+        let jmp_back_dst = ct.target.add(old_pos as usize);
+        let displacement =
+            (jmp_back_dst as isize) - (jmp_back_src as isize + size_of::<JmpRel>() as isize);
 
-            // Can we place the long jump above the function?
-            if !check_address_executable(
-                ct.target.sub(size_of::<JmpRel>() as usize),
-                m.get_handle(),
-            ) {
-                return Err(HookError::TrampolineError);
-            }
-
-            if !Self::is_code_padding(
-                m,
-                ct.target.sub(size_of::<JmpRel>() as usize) as u64,
-                size_of::<JmpRel>() as u64,
-            )? {
-                return Err(HookError::TrampolineError);
-            }
-
-            ct.patch_above = true;
+        if displacement < i32::MIN as isize || displacement > i32::MAX as isize {
+            return Err(HookError::TrampolineError);
         }
 
-        jmp.address = ct.detour as u64;
-        ct.relay = ct.trampoline.add(new_pos as usize);
+        let jmp_back = JmpRel {
+            opcode: 0xE9,
+            operand: displacement as i32,
+        };
 
-        // std::ptr::copy_nonoverlapping(
-        //     &jmp as *const _ as *const u8,
-        //     ct.relay,
-        //     std::mem::size_of_val(&jmp),
-        // );
-        //
         m.copy_non_overlapping(
-            &jmp as *const _ as u64,
-            ct.relay as u64,
-            std::mem::size_of_val(&jmp),
-        );
+            &jmp_back as *const _ as u64,
+            jmp_back_src as u64,
+            size_of::<JmpRel>(),
+        )?;
 
-        return Ok(ct);
+        Ok(ct)
     }
 
     fn is_code_padding<M: MemoryView>(m: &M, inst: u64, size: u64) -> Result<bool, ExpError> {
