@@ -274,6 +274,35 @@ impl PE64Runtime<LocalMemory> {
         }
     }
 
+    pub fn override_size_of_image(&mut self, new_size: u32) -> Result<(), ExpError> {
+        unsafe {
+            let nt_headers_mut = self.nt_headers as *mut ImageNtHeaders64;
+            (*nt_headers_mut).optional_header.size_of_image = new_size;
+
+            let teb = get_teb();
+            if teb.is_null() {
+                return Err(ExpError::ExportError("TEB is null".to_string()));
+            }
+
+            let peb = (*teb).ProcessEnvironmentBlock;
+            if peb.is_null() {
+                return Err(ExpError::ExportError("PEB is null".to_string()));
+            }
+
+            let ldr = (*peb).Ldr;
+            let head = &mut (*ldr).InMemoryOrderModuleList;
+            let first = head.Flink;
+
+            let entry = containing_record!(first, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+
+            // PULONG pEntrySizeOfImage = (PULONG)&tableEntry->Reserved3[1];
+            let psize_of_image = &mut (*entry).Reserved3[1] as *mut _ as *mut u32;
+            *psize_of_image = new_size;
+        }
+        self.image_size = new_size;
+        Ok(())
+    }
+
     /// Locates a module in the current process by walking the PEB module list
     /// and returns its parsed export directory.
     ///
