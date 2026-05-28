@@ -56,6 +56,11 @@ path = "src/bin/hookpattern.rs"
 required-features = ["runtime"]
 
 [[bin]]
+name = "hardware_breakpoint"
+path = "src/bin/hardware_breakpoint.rs"
+required-features = ["hardware_breakpoint"]
+
+[[bin]]
 name = "process"
 path = "src/bin/process.rs"
 required-features = ["runtime"]
