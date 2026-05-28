@@ -10,13 +10,13 @@ use crate::runtime::memory::MemoryView;
 use crate::runtime::memory::RemoteMemory;
 use crate::utils::get_teb;
 use crate::winapi::HANDLE;
+use crate::winapi::LDR_DATA_TABLE_ENTRY;
 use crate::winapi::LIST_ENTRY;
 use crate::winapi::NtQueryInformationProcess;
 use crate::winapi::PEB;
 use crate::winapi::PROCESS_BASIC_INFORMATION;
 use std::mem::offset_of;
 use windows_sys::Win32::System::Threading::TEB;
-use windows_sys::Win32::System::WindowsProgramming::LDR_DATA_TABLE_ENTRY;
 
 // Use manual PEB_LDR_DATA definition because bindgen generates incomplete
 // structs when running on non-Windows hosts (Linux/macOS), even when
@@ -286,8 +286,29 @@ impl PE64Runtime<LocalMemory> {
         }
 
         unsafe {
+            let mut old_protect = 0;
+            if self.memory.virtual_protect(
+                self.nt_headers as *mut u8,
+                core::mem::size_of::<ImageNtHeaders64>(),
+                crate::PAGE_READWRITE,
+                &mut old_protect,
+            ) == 0
+            {
+                return Err(ExpError::RuntimeError(
+                    "Failed to make NT headers writable".to_string(),
+                ));
+            }
+
             let nt_headers_mut = self.nt_headers as *mut ImageNtHeaders64;
             (*nt_headers_mut).optional_header.size_of_image = new_size;
+
+            let mut restore_protect = 0;
+            self.memory.virtual_protect(
+                self.nt_headers as *mut u8,
+                core::mem::size_of::<ImageNtHeaders64>(),
+                old_protect,
+                &mut restore_protect,
+            );
 
             let teb = get_teb();
             if teb.is_null() {
@@ -305,9 +326,7 @@ impl PE64Runtime<LocalMemory> {
 
             let entry = containing_record!(first, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
 
-            // PULONG pEntrySizeOfImage = (PULONG)&tableEntry->Reserved3[1];
-            let psize_of_image = &mut (*entry).Reserved3[1] as *mut _ as *mut u32;
-            *psize_of_image = new_size;
+            (*entry).SizeOfImage = new_size;
         }
         self.image_size = new_size;
         Ok(())
@@ -472,6 +491,7 @@ impl<M: MemoryView> PE64Runtime<M> {
             &mut old_protect,
         );
         self.memory.write_bytes(self.module_base, &[0u8; 4096])?;
+        self.header_erased = true;
 
         Ok(())
     }
