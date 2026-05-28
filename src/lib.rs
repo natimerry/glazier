@@ -3,6 +3,8 @@
 use thiserror::Error;
 
 pub mod consts;
+#[cfg(feature = "hardware_breakpoint")]
+pub mod hardware_breakpoint;
 #[cfg(feature = "runtime")]
 pub mod hde;
 pub mod pe;

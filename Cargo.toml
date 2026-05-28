@@ -14,10 +14,11 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHe
 
 
 [features]
-default = ["runtime","obfuscation","hells_gate"]
+default = ["runtime","obfuscation","hells_gate","hardware_breakpoint"]
 obfuscation = ["dep:obfstr","runtime"]
 runtime = []
 hells_gate = ["runtime"]
+hardware_breakpoint = []
 
 [[bin]]
 name = "get_remote_dlls_winapi"
