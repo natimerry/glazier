@@ -101,9 +101,7 @@ pub struct RemoteMemory {
     pub handle: HANDLE,
 }
 impl RemoteMemory {
-    pub fn from_handle(handle: HANDLE) -> Self {
-        Self { handle }
-    }
+    pub fn from_handle(handle: HANDLE) -> Self { Self { handle } }
 }
 
 impl MemoryView for LocalMemory {
@@ -127,9 +125,7 @@ impl MemoryView for LocalMemory {
         }
     }
 
-    fn get_handle(&self) -> Option<HANDLE> {
-        None
-    }
+    fn get_handle(&self) -> Option<HANDLE> { None }
 
     fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
         unsafe {
@@ -202,9 +198,7 @@ impl MemoryView for RemoteMemory {
         }
     }
 
-    fn get_handle(&self) -> Option<HANDLE> {
-        return Some(self.handle);
-    }
+    fn get_handle(&self) -> Option<HANDLE> { return Some(self.handle); }
 
     fn read_bytes_into(&self, addr: u64, buf: &mut [u8]) -> usize {
         let mut got: SIZE_T = 0;

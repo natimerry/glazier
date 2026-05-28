@@ -3,7 +3,7 @@ use windows_sys::w;
 
 fn main() {
     env_logger::init();
-    
+
     type LoadLibraryWFn = unsafe extern "system" fn(name: *const u16) -> *mut core::ffi::c_void;
 
     type MessageBoxWFn = unsafe extern "system" fn(
@@ -31,7 +31,7 @@ fn main() {
 
     // Parse User32.dll from PEB (now that it's loaded)
     let user32 = PE64Runtime::from_module("USER32.DLL").expect("Failed to find user32.dll");
-// 
+    //
     let message_box_addr = user32
         .find_export("MessageBoxW")
         .expect("Failed to find MessageBoxW")
