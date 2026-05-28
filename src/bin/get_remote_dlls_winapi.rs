@@ -7,6 +7,10 @@ use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::PROCESS_ALL_ACCESS;
 
 fn resolve_export(pe: &PE64Runtime<RemoteMemory>, name: &str) -> Option<u64> {
+    if pe.header_erased {
+        return None;
+    }
+    
     if pe.export_dir.is_null() {
         return None;
     }

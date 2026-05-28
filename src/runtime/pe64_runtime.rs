@@ -60,6 +60,9 @@ pub struct PE64Runtime<M: MemoryView> {
 
     /// Image size
     pub image_size: u32,
+
+    /// Whether we have erased the PE header (for heuristic evasion)
+    pub header_erased: bool,
 }
 
 impl PE64Runtime<RemoteMemory> {
@@ -232,6 +235,7 @@ impl PE64Runtime<RemoteMemory> {
             section_count,
             export_dir,
             image_size,
+            header_erased: false,
         })
     }
 
@@ -275,6 +279,12 @@ impl PE64Runtime<LocalMemory> {
     }
 
     pub fn override_size_of_image(&mut self, new_size: u32) -> Result<(), ExpError> {
+        if self.header_erased {
+            return Err(ExpError::ExportError(
+                "Cannot override size of image after header is erased".to_string(),
+            ));
+        }
+
         unsafe {
             let nt_headers_mut = self.nt_headers as *mut ImageNtHeaders64;
             (*nt_headers_mut).optional_header.size_of_image = new_size;
@@ -395,6 +405,7 @@ impl PE64Runtime<LocalMemory> {
                 section_count,
                 export_dir,
                 image_size,
+                header_erased: false,
             })
         }
     }
@@ -444,4 +455,24 @@ impl<M: MemoryView> PE64Runtime<M> {
     /// Returns `true` if the PE has a non-null export directory.
     #[inline]
     pub fn has_exports(&self) -> bool { !self.export_dir.is_null() }
+
+    /// Removes the PE header from memory
+    pub fn erase_header(&mut self) -> Result<(), ExpError> {
+        if self.header_erased {
+            return Err(ExpError::ExportError(
+                "Header is already erased".to_string(),
+            ));
+        }
+
+        let mut old_protect = 0;
+        self.memory.virtual_protect(
+            self.module_base as *mut u8,
+            4096,
+            crate::PAGE_READWRITE,
+            &mut old_protect,
+        );
+        self.memory.write_bytes(self.module_base, &[0u8; 4096])?;
+
+        Ok(())
+    }
 }
