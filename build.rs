@@ -237,20 +237,23 @@ fn generate_winapi_bindings(out_dir: &str) {
         .write_to_file(&raw_bindings_path)
         .expect("Couldn't write raw bindings!");
 
-    log!("Raw bindings written successfully");
-
-    let raw_bindings_path = PathBuf::from(out_dir).join("raw_bindings.rs");
-    bindings
-        .write_to_file(&raw_bindings_path)
-        .expect("Couldn't write raw bindings!");
-
     log!("Post-processing raw bindings...");
 
     // Fix extern blocks to be unsafe
     let content = std::fs::read_to_string(&raw_bindings_path).unwrap();
     let fixed_content = content
-        .replace("extern \"C\" {", "unsafe extern \"C\" {")
-        .replace("extern \"system\" {", "unsafe extern \"system\" {");
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("extern \"") && trimmed.ends_with('{') {
+                let indent = &line[..line.len() - trimmed.len()];
+                format!("{indent}unsafe {trimmed}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     std::fs::write(&raw_bindings_path, fixed_content).unwrap();
 
@@ -300,7 +303,11 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
         "#[cfg(any(feature = \"obfuscation\", feature = \"hells_gate\"))]"
     )
     .unwrap();
-    writeln!(output, "use crate::runtime::pe64_runtime::PE64Runtime;").unwrap();
+    writeln!(
+        output,
+        "use crate::runtime::NativePeRuntime as NativePERuntime;"
+    )
+    .unwrap();
     writeln!(output, "use crate::utils::to_wide;").unwrap();
 
     writeln!(output).unwrap();
@@ -477,6 +484,7 @@ fn generate_wrapper(output: &mut File, func: &syn::ForeignItemFn) -> std::io::Re
 
     Ok(())
 }
+#[cfg(feature = "hells_gate")]
 fn generate_single_wrapper_hells_gate(
     output: &mut File,
     name: &str,
@@ -528,7 +536,7 @@ fn generate_single_wrapper_hells_gate(
     // In practice, Hell's Gate is strictly for "NTDLL.DLL"
     writeln!(
         output,
-        "        if let Ok(module) = PE64Runtime::from_module(\"{}\") {{",
+        "        if let Ok(module) = NativePERuntime::from_module(\"{}\") {{",
         dll
     )?;
     writeln!(
@@ -626,7 +634,7 @@ fn generate_single_wrapper(
     }
     writeln!(
         output,
-        "        if let Ok(module) = PE64Runtime::from_module(\"{}\") {{",
+        "        if let Ok(module) = NativePERuntime::from_module(\"{}\") {{",
         dll
     )?;
     writeln!(

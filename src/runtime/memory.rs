@@ -46,16 +46,16 @@ pub trait MemoryView {
                     handle,
                     addr as LPVOID,
                     mbi,
-                    size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+                    size_of::<MEMORY_BASIC_INFORMATION>() as SIZE_T,
                 )
             } else {
                 VirtualQuery(
                     addr as LPVOID,
                     mbi,
-                    size_of::<MEMORY_BASIC_INFORMATION>() as u64,
+                    size_of::<MEMORY_BASIC_INFORMATION>() as SIZE_T,
                 )
             };
-            size
+            size as u64
         }
     }
 
@@ -145,13 +145,13 @@ impl MemoryView for RemoteMemory {
     fn read<T: Copy>(&self, address: u64) -> Result<T, ExpError> {
         unsafe {
             let mut buffer: T = std::mem::zeroed();
-            let mut bytes_read: u64 = 0;
+            let mut bytes_read: SIZE_T = 0;
             #[cfg(feature = "hells_gate")]
             let status = NtReadVirtualMemoryHellsGate(
                 self.handle,
                 address as *mut _,
                 &mut buffer as *mut _ as *mut _,
-                size_of::<T>() as u64,
+                size_of::<T>() as SIZE_T,
                 &mut bytes_read,
             );
 
@@ -160,14 +160,14 @@ impl MemoryView for RemoteMemory {
                 self.handle,
                 address as *mut _,
                 &mut buffer as *mut _ as *mut _,
-                size_of::<T>() as u64,
+                size_of::<T>() as SIZE_T,
                 &mut bytes_read,
             );
 
             if status < 0 {
                 return Err(ExpError::RuntimeError("NT READ FAIL".to_string()));
             }
-            if bytes_read != size_of::<T>() as u64 {
+            if bytes_read != size_of::<T>() as SIZE_T {
                 return Err(ExpError::RuntimeError("Partial Read".to_string()));
             }
             Ok(buffer)
@@ -176,13 +176,13 @@ impl MemoryView for RemoteMemory {
 
     fn write<T: Copy>(&self, address: u64, value: T) -> Result<(), ExpError> {
         unsafe {
-            let mut bytes_written: u64 = 0;
+            let mut bytes_written: SIZE_T = 0;
             #[cfg(feature = "hells_gate")]
             let status = NtWriteVirtualMemoryHellsGate(
                 self.handle,
                 address as *mut _,
                 &value as *const _ as *mut _,
-                size_of::<T>() as u64,
+                size_of::<T>() as SIZE_T,
                 &mut bytes_written,
             );
 
@@ -191,13 +191,13 @@ impl MemoryView for RemoteMemory {
                 self.handle,
                 address as *mut _,
                 &value as *const _ as *mut _,
-                size_of::<T>() as u64,
+                size_of::<T>() as SIZE_T,
                 &mut bytes_written,
             );
             if status < 0 {
                 return Err(ExpError::RuntimeError("NT Write FAIL".to_string()));
             }
-            if bytes_written != size_of::<T>() as u64 {
+            if bytes_written != size_of::<T>() as SIZE_T {
                 return Err(ExpError::RuntimeError("Partial Write".to_string()));
             }
             Ok(())
@@ -214,7 +214,7 @@ impl MemoryView for RemoteMemory {
                 self.handle,
                 addr as *const _,
                 buf.as_mut_ptr() as *mut _,
-                buf.len() as u64,
+                buf.len() as SIZE_T,
                 &mut got,
             );
         }

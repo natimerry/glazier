@@ -50,7 +50,7 @@ pub struct PE64Runtime<M: MemoryView> {
     pub nt_headers: *const ImageNtHeaders64,
 
     /// Pointer to the section headers array
-    pub section_headers: *const ImageSectionHeader,
+    pub section_headers: Vec<ImageSectionHeader>,
 
     /// Number of sections
     pub section_count: u16,
@@ -207,6 +207,14 @@ impl PE64Runtime<RemoteMemory> {
         let section_count = nt_headers.file_header.number_of_sections;
         let section_headers_addr =
             nt_headers_addr + core::mem::size_of::<ImageNtHeaders64>() as u64;
+        let mut section_headers = Vec::with_capacity(section_count as usize);
+
+        for index in 0..section_count {
+            section_headers.push(memory.read::<ImageSectionHeader>(
+                section_headers_addr
+                    + index as u64 * core::mem::size_of::<ImageSectionHeader>() as u64,
+            )?);
+        }
 
         let export_rva =
             nt_headers.optional_header.data_directory[IMAGE_DIRECTORY_ENTRY_EXPORT].virtual_address;
@@ -222,7 +230,6 @@ impl PE64Runtime<RemoteMemory> {
         // HACK: We leak memory header but eh
         let dos_header = Box::into_raw(Box::new(dos_header)) as *const ImageDosHeader;
         let nt_headers = Box::into_raw(Box::new(nt_headers)) as *const ImageNtHeaders64;
-        let section_headers = section_headers_addr as *const ImageSectionHeader;
         let export_dir = export_dir_addr as *const ImageExportDirectory;
 
         Ok(Self {
@@ -399,8 +406,11 @@ impl PE64Runtime<LocalMemory> {
 
             let section_count = (*nt_headers).file_header.number_of_sections;
             // section headers should come after the NT headers
-            let section_headers = (nt_headers as usize + core::mem::size_of::<ImageNtHeaders64>())
+            let section_headers_ptr = (nt_headers as usize
+                + core::mem::size_of::<ImageNtHeaders64>())
                 as *const ImageSectionHeader;
+            let section_headers =
+                core::slice::from_raw_parts(section_headers_ptr, section_count as usize).to_vec();
 
             let export_rva = (*nt_headers).optional_header.data_directory
                 [IMAGE_DIRECTORY_ENTRY_EXPORT]
@@ -432,9 +442,7 @@ impl PE64Runtime<LocalMemory> {
 
 impl<M: MemoryView> PE64Runtime<M> {
     /// Returns all section headers parsed from the PE header.
-    pub fn sections(&self) -> &[ImageSectionHeader] {
-        unsafe { core::slice::from_raw_parts(self.section_headers, self.section_count as usize) }
-    }
+    pub fn sections(&self) -> &[ImageSectionHeader] { &self.section_headers }
 
     /// Finds a section by its null-padded 8-byte name (e.g. `".text"`,
     /// `".rdata"`).

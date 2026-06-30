@@ -6,7 +6,6 @@ use crate::pe::export_address_table::ParsedExportFunction;
 use crate::pe::export_address_table::ParsedExportModule;
 use crate::runtime::memory::LocalMemory;
 use crate::runtime::memory::MemoryView;
-#[cfg(target_arch = "x86")]
 use crate::runtime::pe32_runtime::PE32Runtime;
 use crate::runtime::pe64_runtime::PE64Runtime;
 use crate::utils::cast_from_mem;
@@ -215,7 +214,6 @@ impl<M: MemoryView> PE64Runtime<M> {
     }
 }
 
-#[cfg(target_arch = "x86")]
 impl<M: MemoryView> PE32Runtime<M> {
     pub fn exports(&self) -> RuntimeParsedExportIterator32<'_, M> {
         RuntimeParsedExportIterator32::new(self)
@@ -293,18 +291,15 @@ pub struct RuntimeParsedExportIterator<'a, M: MemoryView> {
     index: usize,
 }
 
-#[cfg(target_arch = "x86")]
 pub struct RuntimeParsedExportIterator32<'a, M: MemoryView> {
     runtime: &'a PE32Runtime<M>,
     index: usize,
 }
 
-#[cfg(target_arch = "x86")]
 impl<'a, M: MemoryView> RuntimeParsedExportIterator32<'a, M> {
     pub fn new(runtime: &'a PE32Runtime<M>) -> Self { Self { runtime, index: 0 } }
 }
 
-#[cfg(target_arch = "x86")]
 impl<'a, M: MemoryView> Iterator for RuntimeParsedExportIterator32<'a, M> {
     type Item = ExportedFunction;
 

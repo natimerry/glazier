@@ -106,7 +106,7 @@ impl PatternBuilder {
                 self.bytes.push(Some(b));
             }
         }
-
+        
         Ok(self)
     }
 

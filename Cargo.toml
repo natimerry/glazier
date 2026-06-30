@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 byteorder = "1.5.0"
 env_logger = "0.11.8"
+iced-x86 = { version = "1.21.0", default-features = false, features = ["block_encoder", "decoder", "encoder", "instr_info", "intel", "std"], optional = true }
 log = "0.4.29"
 memchr = "2.8.0"
 obfstr = {version= "0.4.4", optional = true}
@@ -16,9 +17,9 @@ windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHe
 [features]
 default = ["runtime","obfuscation","hells_gate","hardware_breakpoint"]
 obfuscation = ["dep:obfstr","runtime"]
-runtime = []
+runtime = ["dep:iced-x86"]
 hells_gate = ["runtime"]
-hardware_breakpoint = []
+hardware_breakpoint = ["runtime"]
 
 [[bin]]
 name = "get_remote_dlls_winapi"

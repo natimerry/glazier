@@ -1,11 +1,11 @@
-use libwinexploit::runtime::pe64_runtime::PE64Runtime;
+use libwinexploit::runtime::NativePeRuntime;
 use windows_sys::w;
 type LoadLibraryWFn = unsafe extern "system" fn(*const u16) -> *mut core::ffi::c_void;
 type MessageBoxWFn =
     unsafe extern "system" fn(*mut core::ffi::c_void, *const u16, *const u16, u32) -> i32;
 
 fn resolve_load_library() -> LoadLibraryWFn {
-    let kernel32 = PE64Runtime::from_module("KERNEL32.DLL").expect("kernel32.dll not found");
+    let kernel32 = NativePeRuntime::from_module("KERNEL32.DLL").expect("kernel32.dll not found");
 
     let load_library_addr = kernel32
         .find_export("LoadLibraryW")
@@ -16,7 +16,7 @@ fn resolve_load_library() -> LoadLibraryWFn {
 }
 
 fn resolve_message_box() -> MessageBoxWFn {
-    let user32 = PE64Runtime::from_module("USER32.DLL").expect("user32.dll not found");
+    let user32 = NativePeRuntime::from_module("USER32.DLL").expect("user32.dll not found");
 
     let message_box_addr = user32
         .find_export("MessageBoxW")
@@ -33,7 +33,7 @@ mod tests {
 
     #[test]
     fn kernel32_is_loaded() {
-        let kernel32 = PE64Runtime::from_module("KERNEL32.DLL");
+        let kernel32 = NativePeRuntime::from_module("KERNEL32.DLL");
         assert!(kernel32.is_ok());
     }
 
@@ -55,7 +55,7 @@ mod tests {
         let h = unsafe { load_library(name) };
         assert!(!h.is_null());
 
-        let user32 = PE64Runtime::from_module("USER32.DLL");
+        let user32 = NativePeRuntime::from_module("USER32.DLL");
         assert!(user32.is_ok());
     }
 

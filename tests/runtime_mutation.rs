@@ -67,7 +67,7 @@ mod tests {
             module_base: module_base as u64,
             dos_header: module_base as *const _,
             nt_headers: null_mut(),
-            section_headers: null_mut(),
+            section_headers: Vec::new(),
             section_count: 0,
             export_dir: null_mut(),
             image_size: 4096,

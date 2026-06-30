@@ -5,8 +5,6 @@ use thiserror::Error;
 pub mod consts;
 #[cfg(feature = "hardware_breakpoint")]
 pub mod hardware_breakpoint;
-#[cfg(feature = "runtime")]
-pub mod hde;
 pub mod pe;
 #[cfg(feature = "runtime")]
 pub mod runtime;
@@ -22,8 +20,10 @@ pub use runtime::*;
 #[cfg(feature = "runtime")]
 pub mod hooking;
 
-#[cfg(not(any(target_arch = "x86_64", target_arch = "x86")))]
-compile_error!("This crate only supports x86 and x86_64");
+#[cfg(not(target_arch = "x86_64"))]
+compile_error!(
+    "This crate must be compiled for x86_64; PE32/WOW64 targets are supported at runtime"
+);
 
 #[cfg(all(feature = "hells_gate", not(target_arch = "x86_64")))]
 compile_error!("The hells_gate feature only supports x86_64");

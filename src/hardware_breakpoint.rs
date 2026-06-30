@@ -1,13 +1,21 @@
+use crate::runtime::architecture::ArchitectureError;
+use crate::runtime::architecture::TargetArchitecture;
+use crate::runtime::architecture::thread_architecture;
 use crate::winapi::_EXCEPTION_POINTERS;
 use crate::winapi::HANDLE;
+use crate::winapi::WOW64_CONTEXT;
 use crate::winapi::raw::AddVectoredExceptionHandler;
 use crate::winapi::raw::CloseHandle;
+use crate::winapi::raw::GetCurrentProcessId;
+use crate::winapi::raw::GetProcessIdOfThread;
 use crate::winapi::raw::GetThreadContext;
 use crate::winapi::raw::OpenThread;
 use crate::winapi::raw::RemoveVectoredExceptionHandler;
 use crate::winapi::raw::ResumeThread;
 use crate::winapi::raw::SetThreadContext;
 use crate::winapi::raw::SuspendThread;
+use crate::winapi::raw::Wow64GetThreadContext;
+use crate::winapi::raw::Wow64SetThreadContext;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -20,10 +28,8 @@ pub const THREAD_QUERY_INFORMATION: u32 = 0x0040;
 pub const HARDWARE_BREAKPOINT_THREAD_ACCESS: u32 =
     THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_QUERY_INFORMATION;
 
-#[cfg(target_arch = "x86_64")]
-const CONTEXT_DEBUG_REGISTERS: u32 = 0x0010_0010;
-#[cfg(target_arch = "x86")]
-const CONTEXT_DEBUG_REGISTERS: u32 = 0x0001_0010;
+const AMD64_CONTEXT_DEBUG_REGISTERS: u32 = 0x0010_0010;
+const WOW64_CONTEXT_DEBUG_REGISTERS: u32 = 0x0001_0010;
 const EXCEPTION_CONTINUE_EXECUTION: i32 = -1;
 const EXCEPTION_CONTINUE_SEARCH: i32 = 0;
 const EXCEPTION_SINGLE_STEP: u32 = 0x8000_0004;
@@ -57,6 +63,18 @@ pub enum HardwareBreakpointError {
 
     #[error("Failed to install vectored exception handler")]
     VectoredHandlerError,
+
+    #[error(transparent)]
+    Architecture(#[from] ArchitectureError),
+
+    #[error("Address does not fit in the target's 32-bit address space")]
+    AddressOutOfRange,
+
+    #[error("Local vectored handling is only available for native x64 threads")]
+    NonNativeLocalBreakpoint,
+
+    #[error("Local vectored handling requires a thread in the current process")]
+    NonLocalThread,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -148,9 +166,10 @@ impl HardwareBreakpointOptions {
     }
 }
 
-pub struct HardwareBreakpointEntry {
+pub struct NativeHardwareBreakpoint {
     thread: HANDLE,
     owns_thread: bool,
+    architecture: TargetArchitecture,
     address: *mut u8,
     slot: HardwareBreakpointSlot,
     condition: HardwareBreakpointCondition,
@@ -160,6 +179,8 @@ pub struct HardwareBreakpointEntry {
     original_address: u64,
     original_dr7_bits: u64,
 }
+
+pub type HardwareBreakpointEntry = NativeHardwareBreakpoint;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HardwareBreakpointAction {
@@ -195,11 +216,11 @@ struct LocalHardwareBreakpointHandler {
 }
 
 pub struct LocalHardwareBreakpoint {
-    entry: HardwareBreakpointEntry,
+    entry: NativeHardwareBreakpoint,
     handler_id: usize,
 }
 
-impl HardwareBreakpointEntry {
+impl NativeHardwareBreakpoint {
     pub fn new(
         thread: HANDLE,
         address: *mut u8,
@@ -225,19 +246,66 @@ impl HardwareBreakpointEntry {
         size: HardwareBreakpointSize,
         options: HardwareBreakpointOptions,
     ) -> Result<Self, HardwareBreakpointError> {
-        validate_breakpoint(address, condition, size)?;
-
         if thread.is_null() {
             return Err(HardwareBreakpointError::InvalidThreadHandle);
         }
 
-        let context = read_context(thread, options.suspend_thread)?;
+        let architecture = thread_architecture(thread)?;
+        Self::with_architecture_and_options(
+            thread,
+            architecture,
+            address,
+            slot,
+            condition,
+            size,
+            options,
+        )
+    }
+
+    pub fn with_architecture(
+        thread: HANDLE,
+        architecture: TargetArchitecture,
+        address: *mut u8,
+        slot: HardwareBreakpointSlot,
+        condition: HardwareBreakpointCondition,
+        size: HardwareBreakpointSize,
+    ) -> Result<Self, HardwareBreakpointError> {
+        Self::with_architecture_and_options(
+            thread,
+            architecture,
+            address,
+            slot,
+            condition,
+            size,
+            HardwareBreakpointOptions::default(),
+        )
+    }
+
+    pub fn with_architecture_and_options(
+        thread: HANDLE,
+        architecture: TargetArchitecture,
+        address: *mut u8,
+        slot: HardwareBreakpointSlot,
+        condition: HardwareBreakpointCondition,
+        size: HardwareBreakpointSize,
+        options: HardwareBreakpointOptions,
+    ) -> Result<Self, HardwareBreakpointError> {
+        validate_breakpoint(address, condition, size)?;
+        if thread.is_null() {
+            return Err(HardwareBreakpointError::InvalidThreadHandle);
+        }
+        if architecture == TargetArchitecture::X86 && address as usize > u32::MAX as usize {
+            return Err(HardwareBreakpointError::AddressOutOfRange);
+        }
+
+        let context = read_context(thread, architecture, options.suspend_thread)?;
         let original_address = context.debug_register(slot);
         let original_dr7_bits = dr7_slot_bits(context.dr7(), slot);
 
         Ok(Self {
             thread,
             owns_thread: false,
+            architecture,
             address,
             slot,
             condition,
@@ -300,30 +368,40 @@ impl HardwareBreakpointEntry {
     }
 
     pub unsafe fn enable(&mut self) -> Result<(), HardwareBreakpointError> {
-        update_context(self.thread, self.suspend_thread, |context| {
-            context.set_debug_register(self.slot, self.address as u64);
-            context.set_dr7(encode_dr7_slot(
-                context.dr7(),
-                self.slot,
-                self.condition.dr7_bits(),
-                self.size.dr7_bits(),
-            ));
-            context.set_dr6(0);
-        })?;
+        update_context(
+            self.thread,
+            self.architecture,
+            self.suspend_thread,
+            |context| {
+                context.set_debug_register(self.slot, self.address as u64);
+                context.set_dr7(encode_dr7_slot(
+                    context.dr7(),
+                    self.slot,
+                    self.condition.dr7_bits(),
+                    self.size.dr7_bits(),
+                ));
+                context.set_dr6(0);
+            },
+        )?;
 
         self.enabled = true;
         Ok(())
     }
 
     pub unsafe fn disable(&mut self) -> Result<(), HardwareBreakpointError> {
-        update_context(self.thread, self.suspend_thread, |context| {
-            context.set_debug_register(self.slot, self.original_address);
-            context.set_dr7(restore_dr7_slot(
-                context.dr7(),
-                self.slot,
-                self.original_dr7_bits,
-            ));
-        })?;
+        update_context(
+            self.thread,
+            self.architecture,
+            self.suspend_thread,
+            |context| {
+                context.set_debug_register(self.slot, self.original_address);
+                context.set_dr7(restore_dr7_slot(
+                    context.dr7(),
+                    self.slot,
+                    self.original_dr7_bits,
+                ));
+            },
+        )?;
 
         self.enabled = false;
         Ok(())
@@ -336,13 +414,16 @@ impl HardwareBreakpointEntry {
     pub fn thread(&self) -> HANDLE { self.thread }
 
     #[inline]
+    pub const fn architecture(&self) -> TargetArchitecture { self.architecture }
+
+    #[inline]
     pub fn address(&self) -> *mut u8 { self.address }
 
     #[inline]
     pub fn slot(&self) -> HardwareBreakpointSlot { self.slot }
 }
 
-impl Drop for HardwareBreakpointEntry {
+impl Drop for NativeHardwareBreakpoint {
     fn drop(&mut self) {
         if self.enabled {
             let _ = unsafe { self.disable() };
@@ -385,10 +466,17 @@ impl LocalHardwareBreakpoint {
         options: HardwareBreakpointOptions,
         callback: impl FnMut(&mut HardwareBreakpointEvent) -> HardwareBreakpointAction + Send + 'static,
     ) -> Result<Self, HardwareBreakpointError> {
-        ensure_vectored_exception_handler()?;
+        if unsafe { GetProcessIdOfThread(thread) } != unsafe { GetCurrentProcessId() } {
+            return Err(HardwareBreakpointError::NonLocalThread);
+        }
 
         let mut entry =
             HardwareBreakpointEntry::with_options(thread, address, slot, condition, size, options)?;
+        if entry.architecture() != TargetArchitecture::X64 {
+            return Err(HardwareBreakpointError::NonNativeLocalBreakpoint);
+        }
+
+        ensure_vectored_exception_handler()?;
         let handler_id = register_local_handler(slot, address, Box::new(callback));
 
         if let Err(err) = unsafe { entry.enable() } {
@@ -491,13 +579,19 @@ impl Drop for ThreadSuspendGuard {
 
 fn read_context(
     thread: HANDLE,
+    architecture: TargetArchitecture,
     suspend_thread: bool,
 ) -> Result<DebugRegisterContext, HardwareBreakpointError> {
     let _guard = ThreadSuspendGuard::new(thread, suspend_thread)?;
-    let mut context = DebugRegisterContext::default();
-    context.set_context_flags(CONTEXT_DEBUG_REGISTERS);
+    let mut context = DebugRegisterContext::new(architecture);
+    let succeeded = match &mut context {
+        DebugRegisterContext::X64(context) => unsafe {
+            GetThreadContext(thread, context.as_context_mut())
+        },
+        DebugRegisterContext::X86(context) => unsafe { Wow64GetThreadContext(thread, context) },
+    };
 
-    if unsafe { GetThreadContext(thread, context.as_context_mut()) } == 0 {
+    if succeeded == 0 {
         return Err(HardwareBreakpointError::GetThreadContextError);
     }
 
@@ -506,21 +600,32 @@ fn read_context(
 
 fn update_context(
     thread: HANDLE,
+    architecture: TargetArchitecture,
     suspend_thread: bool,
     update: impl FnOnce(&mut DebugRegisterContext),
 ) -> Result<(), HardwareBreakpointError> {
     let _guard = ThreadSuspendGuard::new(thread, suspend_thread)?;
-    let mut context = DebugRegisterContext::default();
-    context.set_context_flags(CONTEXT_DEBUG_REGISTERS);
+    let mut context = DebugRegisterContext::new(architecture);
+    let got_context = match &mut context {
+        DebugRegisterContext::X64(context) => unsafe {
+            GetThreadContext(thread, context.as_context_mut())
+        },
+        DebugRegisterContext::X86(context) => unsafe { Wow64GetThreadContext(thread, context) },
+    };
 
-    if unsafe { GetThreadContext(thread, context.as_context_mut()) } == 0 {
+    if got_context == 0 {
         return Err(HardwareBreakpointError::GetThreadContextError);
     }
 
     update(&mut context);
-    context.set_context_flags(CONTEXT_DEBUG_REGISTERS);
+    let set_context = match &context {
+        DebugRegisterContext::X64(context) => unsafe {
+            SetThreadContext(thread, context.as_context())
+        },
+        DebugRegisterContext::X86(context) => unsafe { Wow64SetThreadContext(thread, context) },
+    };
 
-    if unsafe { SetThreadContext(thread, context.as_context()) } == 0 {
+    if set_context == 0 {
         return Err(HardwareBreakpointError::SetThreadContextError);
     }
 
@@ -627,6 +732,10 @@ fn unregister_local_handler(id: usize) {
 }
 
 unsafe extern "C" fn local_breakpoint_dispatcher(exception_info: *mut _EXCEPTION_POINTERS) -> i32 {
+    unsafe { dispatch_hardware_breakpoint(exception_info) }
+}
+
+unsafe fn dispatch_hardware_breakpoint(exception_info: *mut _EXCEPTION_POINTERS) -> i32 {
     let exception_info = exception_info as *mut ExceptionPointers;
     if exception_info.is_null() {
         return EXCEPTION_CONTINUE_SEARCH;
@@ -688,7 +797,7 @@ unsafe extern "C" fn local_breakpoint_dispatcher(exception_info: *mut _EXCEPTION
 #[repr(C)]
 struct ExceptionPointers {
     exception_record: *mut ExceptionRecord,
-    context_record: *mut DebugRegisterContext,
+    context_record: *mut Amd64DebugRegisterContext,
 }
 
 #[repr(C)]
@@ -700,10 +809,9 @@ struct ExceptionRecord {
     number_parameters: u32,
 }
 
-#[cfg(target_arch = "x86_64")]
 #[repr(C, align(16))]
 #[derive(Clone, Copy)]
-struct DebugRegisterContext {
+struct Amd64DebugRegisterContext {
     p1_home: u64,
     p2_home: u64,
     p3_home: u64,
@@ -728,25 +836,16 @@ struct DebugRegisterContext {
     rest: [u8; 0x4d0 - 0x78],
 }
 
-#[cfg(target_arch = "x86")]
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct DebugRegisterContext {
-    context_flags: u32,
-    dr0: u32,
-    dr1: u32,
-    dr2: u32,
-    dr3: u32,
-    dr6: u32,
-    dr7: u32,
-    rest: [u8; 0x2cc - 0x1c],
+enum DebugRegisterContext {
+    X86(WOW64_CONTEXT),
+    X64(Amd64DebugRegisterContext),
 }
 
-impl Default for DebugRegisterContext {
+impl Default for Amd64DebugRegisterContext {
     fn default() -> Self { unsafe { core::mem::zeroed() } }
 }
 
-impl DebugRegisterContext {
+impl Amd64DebugRegisterContext {
     fn as_context(&self) -> *const crate::winapi::CONTEXT {
         self as *const _ as *const crate::winapi::CONTEXT
     }
@@ -755,47 +854,88 @@ impl DebugRegisterContext {
         self as *mut _ as crate::winapi::LPCONTEXT
     }
 
-    fn set_context_flags(&mut self, flags: u32) { self.context_flags = flags; }
+    fn dr6(&self) -> u64 { self.dr6 }
 
-    fn dr7(&self) -> u64 { self.dr7 as u64 }
+    fn set_dr6(&mut self, value: u64) { self.dr6 = value; }
 
-    fn dr6(&self) -> u64 { self.dr6 as u64 }
-
-    fn set_dr6(&mut self, value: u64) { self.dr6 = value as _; }
-
-    fn set_dr7(&mut self, value: u64) { self.dr7 = value as _; }
-
-    #[cfg(target_arch = "x86_64")]
     fn set_resume_flag(&mut self) {
         const EFLAGS_RESUME_FLAG: u32 = 0x0001_0000;
         self.e_flags |= EFLAGS_RESUME_FLAG;
     }
 
-    #[cfg(target_arch = "x86")]
-    fn set_resume_flag(&mut self) {
-        const EFLAGS_RESUME_FLAG: u32 = 0x0001_0000;
-        const EFLAGS_OFFSET: usize = 0xc0;
-        unsafe {
-            let eflags = (self as *mut Self as *mut u8).add(EFLAGS_OFFSET) as *mut u32;
-            *eflags |= EFLAGS_RESUME_FLAG;
+    fn debug_register(&self, slot: HardwareBreakpointSlot) -> u64 {
+        match slot {
+            HardwareBreakpointSlot::Dr0 => self.dr0,
+            HardwareBreakpointSlot::Dr1 => self.dr1,
+            HardwareBreakpointSlot::Dr2 => self.dr2,
+            HardwareBreakpointSlot::Dr3 => self.dr3,
+        }
+    }
+}
+
+impl DebugRegisterContext {
+    fn new(architecture: TargetArchitecture) -> Self {
+        match architecture {
+            TargetArchitecture::X86 => {
+                let mut context: WOW64_CONTEXT = unsafe { core::mem::zeroed() };
+                context.ContextFlags = WOW64_CONTEXT_DEBUG_REGISTERS;
+                Self::X86(context)
+            }
+            TargetArchitecture::X64 => {
+                let mut context = Amd64DebugRegisterContext::default();
+                context.context_flags = AMD64_CONTEXT_DEBUG_REGISTERS;
+                Self::X64(context)
+            }
+        }
+    }
+
+    fn dr7(&self) -> u64 {
+        match self {
+            Self::X86(context) => context.Dr7 as u64,
+            Self::X64(context) => context.dr7,
+        }
+    }
+
+    fn set_dr6(&mut self, value: u64) {
+        match self {
+            Self::X86(context) => context.Dr6 = value as u32,
+            Self::X64(context) => context.dr6 = value,
+        }
+    }
+
+    fn set_dr7(&mut self, value: u64) {
+        match self {
+            Self::X86(context) => context.Dr7 = value as u32,
+            Self::X64(context) => context.dr7 = value,
         }
     }
 
     fn debug_register(&self, slot: HardwareBreakpointSlot) -> u64 {
-        match slot {
-            HardwareBreakpointSlot::Dr0 => self.dr0 as u64,
-            HardwareBreakpointSlot::Dr1 => self.dr1 as u64,
-            HardwareBreakpointSlot::Dr2 => self.dr2 as u64,
-            HardwareBreakpointSlot::Dr3 => self.dr3 as u64,
+        match self {
+            Self::X86(context) => match slot {
+                HardwareBreakpointSlot::Dr0 => context.Dr0 as u64,
+                HardwareBreakpointSlot::Dr1 => context.Dr1 as u64,
+                HardwareBreakpointSlot::Dr2 => context.Dr2 as u64,
+                HardwareBreakpointSlot::Dr3 => context.Dr3 as u64,
+            },
+            Self::X64(context) => context.debug_register(slot),
         }
     }
 
     fn set_debug_register(&mut self, slot: HardwareBreakpointSlot, address: u64) {
-        match slot {
-            HardwareBreakpointSlot::Dr0 => self.dr0 = address as _,
-            HardwareBreakpointSlot::Dr1 => self.dr1 = address as _,
-            HardwareBreakpointSlot::Dr2 => self.dr2 = address as _,
-            HardwareBreakpointSlot::Dr3 => self.dr3 = address as _,
+        match self {
+            Self::X86(context) => match slot {
+                HardwareBreakpointSlot::Dr0 => context.Dr0 = address as u32,
+                HardwareBreakpointSlot::Dr1 => context.Dr1 = address as u32,
+                HardwareBreakpointSlot::Dr2 => context.Dr2 = address as u32,
+                HardwareBreakpointSlot::Dr3 => context.Dr3 = address as u32,
+            },
+            Self::X64(context) => match slot {
+                HardwareBreakpointSlot::Dr0 => context.dr0 = address,
+                HardwareBreakpointSlot::Dr1 => context.dr1 = address,
+                HardwareBreakpointSlot::Dr2 => context.dr2 = address,
+                HardwareBreakpointSlot::Dr3 => context.dr3 = address,
+            },
         }
     }
 }
@@ -829,5 +969,39 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn debug_context_overlay_matches_windows_layout() {
+        assert_eq!(core::mem::size_of::<Amd64DebugRegisterContext>(), 0x4d0);
+        assert_eq!(
+            core::mem::offset_of!(Amd64DebugRegisterContext, context_flags),
+            0x30
+        );
+        assert_eq!(core::mem::offset_of!(Amd64DebugRegisterContext, dr0), 0x48);
+        assert_eq!(core::mem::offset_of!(Amd64DebugRegisterContext, dr7), 0x70);
+
+        assert_eq!(core::mem::size_of::<WOW64_CONTEXT>(), 0x2cc);
+        assert_eq!(core::mem::offset_of!(WOW64_CONTEXT, ContextFlags), 0);
+        assert_eq!(core::mem::offset_of!(WOW64_CONTEXT, Dr0), 0x04);
+        assert_eq!(core::mem::offset_of!(WOW64_CONTEXT, Dr7), 0x18);
+    }
+
+    #[test]
+    fn debug_context_dispatches_by_target_architecture() {
+        let mut x86 = DebugRegisterContext::new(TargetArchitecture::X86);
+        x86.set_debug_register(HardwareBreakpointSlot::Dr2, 0x1234_5678);
+        x86.set_dr7(0x55aa);
+        assert_eq!(x86.debug_register(HardwareBreakpointSlot::Dr2), 0x1234_5678);
+        assert_eq!(x86.dr7(), 0x55aa);
+
+        let mut x64 = DebugRegisterContext::new(TargetArchitecture::X64);
+        x64.set_debug_register(HardwareBreakpointSlot::Dr2, 0x1234_5678_9abc_def0);
+        x64.set_dr7(0xaa55);
+        assert_eq!(
+            x64.debug_register(HardwareBreakpointSlot::Dr2),
+            0x1234_5678_9abc_def0
+        );
+        assert_eq!(x64.dr7(), 0xaa55);
     }
 }

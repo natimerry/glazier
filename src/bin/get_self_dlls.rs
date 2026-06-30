@@ -1,4 +1,4 @@
-use libwinexploit::runtime::pe64_runtime::PE64Runtime;
+use libwinexploit::runtime::NativePeRuntime;
 use windows_sys::w;
 
 fn main() {
@@ -14,7 +14,8 @@ fn main() {
     ) -> i32;
 
     // Load kernel32.dll from PEB and find LoadLibraryW
-    let kernel32 = PE64Runtime::from_module("KERNEL32.DLL").expect("Failed to find kernel32.dll");
+    let kernel32 =
+        NativePeRuntime::from_module("KERNEL32.DLL").expect("Failed to find kernel32.dll");
 
     let load_library_addr = kernel32
         .find_export("LoadLibraryW")
@@ -30,7 +31,7 @@ fn main() {
     }
 
     // Parse User32.dll from PEB (now that it's loaded)
-    let user32 = PE64Runtime::from_module("USER32.DLL").expect("Failed to find user32.dll");
+    let user32 = NativePeRuntime::from_module("USER32.DLL").expect("Failed to find user32.dll");
     //
     let message_box_addr = user32
         .find_export("MessageBoxW")

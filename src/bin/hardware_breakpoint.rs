@@ -74,7 +74,9 @@ fn main() {
     }
 }
 
-unsafe extern "C" fn worker_thread(_: *mut c_void) -> u32 {
+unsafe extern "C" fn worker_thread(_: *mut c_void) -> u32 { worker_thread_main() }
+
+fn worker_thread_main() -> u32 {
     breakpoint_target();
 
     while !THREAD_CAN_EXIT.load(Ordering::Acquire) {

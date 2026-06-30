@@ -1,3 +1,5 @@
+#![cfg(all(feature = "hells_gate", target_arch = "x86_64"))]
+
 #[cfg(all(test, windows))]
 mod syscall_tests {
     use libwinexploit::runtime::pe64_runtime::PE64Runtime;
