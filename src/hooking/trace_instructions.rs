@@ -306,6 +306,8 @@ impl AnsiFormatterOutput {
         self.text
     }
 }
+use colored::{Color, Colorize};
+
 
 impl FormatterOutput for AnsiFormatterOutput {
     fn write(&mut self, text: &str, kind: FormatterTextKind) {
@@ -317,39 +319,45 @@ impl FormatterOutput for AnsiFormatterOutput {
                 | FormatterTextKind::SelectorValue
         );
 
-        let text = if self.mask_literals && is_literal_value {
-            "<disp?>"
-        } else {
-            text
-        };
-
         if !self.colors {
-            self.text.push_str(text);
+            self.text.push_str(if self.mask_literals && is_literal_value {
+                "<disp>"
+            } else {
+                text
+            });
+            return;
+        }
+
+        if self.mask_literals && is_literal_value {
+            self.text.push_str(
+                &"<disp>"
+                    .bright_white()
+                    .on_bright_red()
+                    .to_string(),
+            );
             return;
         }
 
         let color = match kind {
-            FormatterTextKind::Mnemonic | FormatterTextKind::Prefix => "\x1b[1;33m",
-            FormatterTextKind::Register => "\x1b[1;36m",
+            FormatterTextKind::Mnemonic | FormatterTextKind::Prefix => Color::BrightYellow,
+            FormatterTextKind::Register => Color::BrightCyan,
 
             FormatterTextKind::Number
             | FormatterTextKind::LabelAddress
             | FormatterTextKind::FunctionAddress
-            | FormatterTextKind::SelectorValue => "\x1b[1;32m",
+            | FormatterTextKind::SelectorValue => Color::BrightGreen,
 
-            FormatterTextKind::Keyword | FormatterTextKind::Decorator => "\x1b[1;34m",
+            FormatterTextKind::Keyword | FormatterTextKind::Decorator => Color::BrightBlue,
 
-            FormatterTextKind::Operator | FormatterTextKind::Punctuation => "\x1b[37m",
+            FormatterTextKind::Operator | FormatterTextKind::Punctuation => Color::White,
 
-            _ => "",
+            _ => Color::White,
         };
 
-        if color.is_empty() {
+        if color == Color::White {
             self.text.push_str(text);
         } else {
-            self.text.push_str(color);
-            self.text.push_str(text);
-            self.text.push_str("\x1b[0m");
+            self.text.push_str(&text.color(color).to_string());
         }
     }
 }
