@@ -1,4 +1,6 @@
 use crate::ExpError;
+use crate::hooking::trace_instructions::DisasmLayout;
+use crate::hooking::trace_instructions::pattern_traces::log_pattern;
 use crate::runtime::memory::MemoryView;
 use crate::runtime::memory::RemoteMemory;
 use crate::winapi::CreateToolhelp32Snapshot;
@@ -6,6 +8,11 @@ use crate::winapi::HANDLE;
 use crate::winapi::MODULEENTRY32W;
 use crate::winapi::Module32NextW;
 use crate::winapi::raw::Module32FirstW;
+use iced_x86::Decoder;
+use iced_x86::DecoderOptions;
+use iced_x86::Instruction;
+use log::Level;
+use log::debug;
 use log::trace;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE32;
@@ -106,7 +113,7 @@ impl PatternBuilder {
                 self.bytes.push(Some(b));
             }
         }
-        
+
         Ok(self)
     }
 
@@ -126,6 +133,77 @@ impl PatternBuilder {
             concrete_runs,
             return_num: self.return_num,
         }
+    }
+
+    pub fn generate_wildcards(&mut self) {
+        let bytes = self
+            .bytes
+            .iter()
+            .map(|x| x.expect("Tried to build pattern on instructions with existing wildcards"))
+            .collect::<Vec<u8>>();
+
+        let mut pattern = Vec::<Option<u8>>::with_capacity(bytes.len());
+
+        let mut decoder = Decoder::new(64, &bytes, DecoderOptions::NONE);
+        let mut instr = Instruction::default();
+
+        while decoder.can_decode() {
+            let instruction_start = decoder.position();
+
+            decoder.decode_out(&mut instr);
+
+            let instruction_end = decoder.position();
+
+            if instr.is_invalid() || instruction_end <= instruction_start {
+                debug!("invalid instruction at byte offset +{instruction_start:#X}; stopping");
+                break;
+            }
+
+            let pattern_start = pattern.len();
+
+            pattern.extend(
+                bytes[instruction_start..instruction_end]
+                    .iter()
+                    .copied()
+                    .map(Some),
+            );
+
+            let offsets = decoder.get_constant_offsets(&instr);
+
+            // op [rcx+50h]
+            if offsets.has_displacement() {
+                let start = pattern_start + offsets.displacement_offset();
+                let end = start + offsets.displacement_size();
+
+                // we need to None out this shit
+                pattern[start..end].fill(None);
+            }
+
+            if offsets.has_immediate() {
+                let start = pattern_start + offsets.immediate_offset();
+                let end = start + offsets.immediate_size();
+
+                pattern[start..end].fill(None);
+            }
+
+            // is this even possible?
+            if offsets.has_immediate2() {
+                let start = pattern_start + offsets.immediate_offset2();
+                let end = start + offsets.immediate_size2();
+
+                pattern[start..end].fill(None);
+            }
+        }
+        log_pattern(
+            "New pattern generated is",
+            &pattern,
+            64,
+            0,
+            DisasmLayout::MultiLine,
+            Level::Info,
+        );
+
+        self.bytes = pattern;
     }
 }
 
@@ -147,6 +225,15 @@ impl Pattern {
         size: usize,
         opt: PatternScanOption,
     ) -> Option<Vec<*const u8>> {
+        log_pattern(
+            "Searching For:",
+            &self.bytes,
+            64,
+            base as u64,
+            DisasmLayout::MultiLine,
+            Level::Debug,
+        );
+
         let n = self.bytes.len();
         if size < n {
             return None;

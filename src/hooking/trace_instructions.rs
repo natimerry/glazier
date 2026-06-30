@@ -1,3 +1,5 @@
+pub mod pattern_traces;
+
 use iced_x86::{
     Decoder, DecoderOptions, FlowControl, Formatter, FormatterOutput, FormatterTextKind, Instruction, IntelFormatter,
 };
@@ -193,6 +195,7 @@ pub fn format_disassembly(lines: &[DisasmLine], layout: DisasmLayout) -> String 
     }
 }
 
+
 pub fn log_disassembly(
     label: &str,
     bytes: &[u8],
@@ -276,6 +279,7 @@ fn color_label(label: &str) -> String {
 struct AnsiFormatterOutput {
     text: String,
     colors: bool,
+    mask_literals: bool,
 }
 
 impl AnsiFormatterOutput {
@@ -283,6 +287,18 @@ impl AnsiFormatterOutput {
         Self {
             text: String::new(),
             colors,
+            mask_literals: false,
+        }
+    }
+
+    fn with_masked_literals(
+        colors: bool,
+        mask_literals: bool,
+    ) -> Self {
+        Self {
+            text: String::new(),
+            colors,
+            mask_literals,
         }
     }
 
@@ -293,6 +309,20 @@ impl AnsiFormatterOutput {
 
 impl FormatterOutput for AnsiFormatterOutput {
     fn write(&mut self, text: &str, kind: FormatterTextKind) {
+        let is_literal_value = matches!(
+            kind,
+            FormatterTextKind::Number
+                | FormatterTextKind::LabelAddress
+                | FormatterTextKind::FunctionAddress
+                | FormatterTextKind::SelectorValue
+        );
+
+        let text = if self.mask_literals && is_literal_value {
+            "<disp?>"
+        } else {
+            text
+        };
+
         if !self.colors {
             self.text.push_str(text);
             return;
