@@ -19,7 +19,6 @@ use crate::winapi::VirtualQuery;
 use crate::winapi::VirtualQueryEx;
 use std::ptr::null_mut;
 use std::u8;
-use iced_x86::Instruction;
 use thiserror::Error;
 
 pub static GLOBAL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

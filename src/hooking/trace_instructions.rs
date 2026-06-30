@@ -1,7 +1,7 @@
 use iced_x86::{
     Decoder, DecoderOptions, FlowControl, Formatter, FormatterOutput, FormatterTextKind, Instruction, IntelFormatter,
 };
-use log::{Level, LevelFilter, trace};
+use log::Level;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisasmLayout {
