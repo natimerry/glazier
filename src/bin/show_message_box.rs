@@ -1,18 +1,19 @@
+use libwinexploit::utils::to_wide;
 use libwinexploit::winapi::MessageBoxW;
-use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
-use windows_sys::w;
+
+const MB_OK: u32 = 0;
 
 fn main() {
     env_logger::init();
 
-    let text = w!("Hello from generated bindings!");
-    let caption = w!("PE Loader Rust");
+    let text = to_wide("Hello from generated bindings!");
+    let caption = to_wide("PE Loader Rust");
 
     unsafe {
         MessageBoxW(
             std::ptr::null_mut(), // HWND (null)
-            text,
-            caption,
+            text.as_ptr(),
+            caption.as_ptr(),
             MB_OK, // Constant from winapi bindings
         );
     }

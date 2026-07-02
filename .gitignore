@@ -4,3 +4,4 @@
 /.idea
 /tests/samples/*.exe
 /*.log
+*.log

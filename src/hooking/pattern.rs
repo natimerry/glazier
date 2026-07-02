@@ -1,4 +1,6 @@
 use crate::ExpError;
+use crate::TH32CS_SNAPMODULE;
+use crate::TH32CS_SNAPMODULE32;
 use crate::hooking::trace_instructions::DisasmLayout;
 use crate::hooking::trace_instructions::pattern_traces::log_pattern;
 use crate::runtime::memory::MemoryView;
@@ -14,8 +16,6 @@ use iced_x86::Instruction;
 use log::Level;
 use log::debug;
 use log::trace;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE;
-use windows_sys::Win32::System::Diagnostics::ToolHelp::TH32CS_SNAPMODULE32;
 
 /// A compiled byte pattern supporting wildcards, used for scanning memory
 /// regions.

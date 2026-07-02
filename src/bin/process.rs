@@ -1,5 +1,6 @@
 use libwinexploit::runtime::process::*;
-use windows_sys::Win32::System::Threading::PROCESS_ALL_ACCESS;
+
+const PROCESS_ALL_ACCESS: u32 = 0x001f_ffff;
 
 fn main() {
     let process = Process::get_from_name("msedge.exe", PROCESS_ALL_ACCESS).unwrap();

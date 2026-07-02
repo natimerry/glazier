@@ -1,5 +1,5 @@
 use libwinexploit::runtime::NativePeRuntime;
-use windows_sys::w;
+use libwinexploit::utils::to_wide;
 
 fn main() {
     env_logger::init();
@@ -25,9 +25,9 @@ fn main() {
     let load_library: LoadLibraryWFn = unsafe { core::mem::transmute(load_library_addr) };
 
     // Load User32.dll dynamically
-    let user32_name = w!("User32.dll");
+    let user32_name = to_wide("User32.dll");
     unsafe {
-        load_library(user32_name);
+        load_library(user32_name.as_ptr());
     }
 
     // Parse User32.dll from PEB (now that it's loaded)
@@ -41,14 +41,14 @@ fn main() {
     let message_box: MessageBoxWFn = unsafe { core::mem::transmute(message_box_addr) };
 
     // Call MessageBoxW
-    let text = w!("Hello from manually resolved MessageBoxW");
-    let caption = w!("PE Loader Rust");
+    let text = to_wide("Hello from manually resolved MessageBoxW");
+    let caption = to_wide("PE Loader Rust");
 
     unsafe {
         message_box(
             core::ptr::null_mut(),
-            text,
-            caption,
+            text.as_ptr(),
+            caption.as_ptr(),
             0, // MB_OK
         );
     }

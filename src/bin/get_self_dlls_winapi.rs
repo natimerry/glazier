@@ -1,6 +1,7 @@
 use libwinexploit::utils::to_wide;
 use libwinexploit::winapi::*;
-use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
+
+const MB_OK: u32 = 0;
 fn main() {
     env_logger::init();
 

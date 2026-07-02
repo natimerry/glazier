@@ -1,22 +1,23 @@
 use crate::ExpError;
 use crate::containing_record;
+use crate::memory::LocalMemory;
+use crate::memory::MemoryView;
+use crate::memory::RemoteMemory;
 use crate::pe::export_address_table::ImageExportDirectory;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::IMAGE_DIRECTORY_ENTRY_EXPORT;
 use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::runtime::memory::LocalMemory;
-use crate::runtime::memory::MemoryView;
-use crate::runtime::memory::RemoteMemory;
+use crate::utils::get_peb;
 use crate::utils::get_teb;
-use crate::winapi::HANDLE;
-use crate::winapi::LDR_DATA_TABLE_ENTRY;
-use crate::winapi::LIST_ENTRY;
-use crate::winapi::NtQueryInformationProcess;
-use crate::winapi::PEB;
-use crate::winapi::PROCESS_BASIC_INFORMATION;
+use libwinexploit_bindings::HANDLE;
+use libwinexploit_bindings::LDR_DATA_TABLE_ENTRY;
+use libwinexploit_bindings::LIST_ENTRY;
+use libwinexploit_bindings::NtQueryInformationProcess;
+use libwinexploit_bindings::PEB;
+use libwinexploit_bindings::PROCESS_BASIC_INFORMATION;
+use libwinexploit_bindings::TEB;
 use std::mem::offset_of;
-use windows_sys::Win32::System::Threading::TEB;
 
 // Use manual PEB_LDR_DATA definition because bindgen generates incomplete
 // structs when running on non-Windows hosts (Linux/macOS), even when
@@ -269,13 +270,13 @@ impl PE64Runtime<LocalMemory> {
                 return Err(ExpError::ExportError("TEB is null".to_string()));
             }
 
-            let peb = (*teb).ProcessEnvironmentBlock;
+            let peb = get_peb();
             if peb.is_null() {
                 return Err(ExpError::ExportError("PEB is null".to_string()));
             }
 
             let ldr = (*peb).Ldr;
-            let head = &mut (*ldr).InMemoryOrderModuleList;
+            let head = &mut *ldr.cast::<u8>().add(0x20).cast::<LIST_ENTRY>();
             let first = head.Flink;
 
             let entry = containing_record!(first, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
@@ -322,13 +323,13 @@ impl PE64Runtime<LocalMemory> {
                 return Err(ExpError::ExportError("TEB is null".to_string()));
             }
 
-            let peb = (*teb).ProcessEnvironmentBlock;
+            let peb = get_peb();
             if peb.is_null() {
                 return Err(ExpError::ExportError("PEB is null".to_string()));
             }
 
             let ldr = (*peb).Ldr;
-            let head = &mut (*ldr).InMemoryOrderModuleList;
+            let head = &mut *ldr.cast::<u8>().add(0x20).cast::<LIST_ENTRY>();
             let first = head.Flink;
 
             let entry = containing_record!(first, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
@@ -359,13 +360,13 @@ impl PE64Runtime<LocalMemory> {
                 return Err(ExpError::ExportError("TEB is null".to_string()));
             }
 
-            let peb = (*teb).ProcessEnvironmentBlock;
+            let peb = get_peb();
             if peb.is_null() {
                 return Err(ExpError::ExportError("PEB is null".to_string()));
             }
 
             let ldr = (*peb).Ldr;
-            let head = &mut (*ldr).InMemoryOrderModuleList;
+            let head = &mut *ldr.cast::<u8>().add(0x20).cast::<LIST_ENTRY>();
             let mut curr = head.Flink;
 
             let target_name = dll_name.to_string().to_lowercase();

@@ -6,6 +6,6 @@ fn main() {
     let raw = env::var("DEP_LIBWINEXPLOIT_BINDINGS_RAW_BINDINGS")
         .expect("bindings crate did not publish its raw declarations");
 
-    libwinexploit_codegen::generate_winapi_hook_bindings(Path::new(&raw), &out_dir);
+    libwinexploit_codegen::generate_wrapped_bindings(Path::new(&raw), &out_dir);
     println!("cargo:rerun-if-changed={raw}");
 }

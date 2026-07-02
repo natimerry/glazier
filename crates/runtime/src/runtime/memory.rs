@@ -1,24 +1,18 @@
 use crate::ExpError;
-use crate::winapi::BOOL;
-use crate::winapi::DWORD;
-use crate::winapi::HANDLE;
-use crate::winapi::LPVOID;
-use crate::winapi::MEMORY_BASIC_INFORMATION;
-#[cfg(not(feature = "hells_gate"))]
-use crate::winapi::NtReadVirtualMemory;
-#[cfg(feature = "hells_gate")]
-use crate::winapi::NtReadVirtualMemoryHellsGate;
-#[cfg(not(feature = "hells_gate"))]
-use crate::winapi::NtWriteVirtualMemory;
-#[cfg(feature = "hells_gate")]
-use crate::winapi::NtWriteVirtualMemoryHellsGate;
-use crate::winapi::PDWORD;
-use crate::winapi::ReadProcessMemory;
-use crate::winapi::SIZE_T;
-use crate::winapi::VirtualProtect;
-use crate::winapi::VirtualProtectEx;
-use crate::winapi::VirtualQuery;
-use crate::winapi::VirtualQueryEx;
+use libwinexploit_bindings::BOOL;
+use libwinexploit_bindings::DWORD;
+use libwinexploit_bindings::HANDLE;
+use libwinexploit_bindings::LPVOID;
+use libwinexploit_bindings::MEMORY_BASIC_INFORMATION;
+use libwinexploit_bindings::NtReadVirtualMemory;
+use libwinexploit_bindings::NtWriteVirtualMemory;
+use libwinexploit_bindings::PDWORD;
+use libwinexploit_bindings::ReadProcessMemory;
+use libwinexploit_bindings::SIZE_T;
+use libwinexploit_bindings::VirtualProtect;
+use libwinexploit_bindings::VirtualProtectEx;
+use libwinexploit_bindings::VirtualQuery;
+use libwinexploit_bindings::VirtualQueryEx;
 
 pub trait MemoryView {
     fn read<T: Copy>(&self, address: u64) -> Result<T, ExpError>;
@@ -146,16 +140,6 @@ impl MemoryView for RemoteMemory {
         unsafe {
             let mut buffer: T = std::mem::zeroed();
             let mut bytes_read: SIZE_T = 0;
-            #[cfg(feature = "hells_gate")]
-            let status = NtReadVirtualMemoryHellsGate(
-                self.handle,
-                address as *mut _,
-                &mut buffer as *mut _ as *mut _,
-                size_of::<T>() as SIZE_T,
-                &mut bytes_read,
-            );
-
-            #[cfg(not(feature = "hells_gate"))]
             let status = NtReadVirtualMemory(
                 self.handle,
                 address as *mut _,
@@ -177,16 +161,6 @@ impl MemoryView for RemoteMemory {
     fn write<T: Copy>(&self, address: u64, value: T) -> Result<(), ExpError> {
         unsafe {
             let mut bytes_written: SIZE_T = 0;
-            #[cfg(feature = "hells_gate")]
-            let status = NtWriteVirtualMemoryHellsGate(
-                self.handle,
-                address as *mut _,
-                &value as *const _ as *mut _,
-                size_of::<T>() as SIZE_T,
-                &mut bytes_written,
-            );
-
-            #[cfg(not(feature = "hells_gate"))]
             let status = NtWriteVirtualMemory(
                 self.handle,
                 address as *mut _,

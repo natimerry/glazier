@@ -1,5 +1,5 @@
 use libwinexploit::runtime::NativePeRuntime;
-use windows_sys::w;
+use libwinexploit::utils::to_wide;
 type LoadLibraryWFn = unsafe extern "system" fn(*const u16) -> *mut core::ffi::c_void;
 type MessageBoxWFn =
     unsafe extern "system" fn(*mut core::ffi::c_void, *const u16, *const u16, u32) -> i32;
@@ -29,7 +29,6 @@ fn resolve_message_box() -> MessageBoxWFn {
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
-    use windows_sys::w;
 
     #[test]
     fn kernel32_is_loaded() {
@@ -41,8 +40,8 @@ mod tests {
     fn can_resolve_loadlibraryw() {
         let load_library = resolve_load_library();
 
-        let name = w!("Kernel32.dll");
-        let h = unsafe { load_library(name) };
+        let name = to_wide("Kernel32.dll");
+        let h = unsafe { load_library(name.as_ptr()) };
 
         assert!(!h.is_null());
     }
@@ -51,8 +50,8 @@ mod tests {
     fn user32_can_be_loaded_manually() {
         let load_library = resolve_load_library();
 
-        let name = w!("User32.dll");
-        let h = unsafe { load_library(name) };
+        let name = to_wide("User32.dll");
+        let h = unsafe { load_library(name.as_ptr()) };
         assert!(!h.is_null());
 
         let user32 = NativePeRuntime::from_module("USER32.DLL");
@@ -63,8 +62,9 @@ mod tests {
     fn can_resolve_messageboxw_symbol() {
         // Ensure USER32 is loaded
         let load_library = resolve_load_library();
+        let name = to_wide("User32.dll");
         unsafe {
-            load_library(w!("User32.dll"));
+            load_library(name.as_ptr());
         }
 
         let _ = resolve_message_box(); // should not panic
@@ -76,17 +76,18 @@ mod tests {
 #[ignore = "spawns UI"]
 fn messagebox_smoke_test() {
     let load_library = resolve_load_library();
+    let name = to_wide("User32.dll");
     unsafe {
-        load_library(w!("User32.dll"));
+        load_library(name.as_ptr());
     }
 
     let message_box = resolve_message_box();
 
-    let text = w!("Manual MessageBoxW test");
-    let caption = w!("PE loader");
+    let text = to_wide("Manual MessageBoxW test");
+    let caption = to_wide("PE loader");
 
     unsafe {
-        let ret = message_box(core::ptr::null_mut(), text, caption, 0);
+        let ret = message_box(core::ptr::null_mut(), text.as_ptr(), caption.as_ptr(), 0);
         assert_eq!(ret, 1);
     }
 }

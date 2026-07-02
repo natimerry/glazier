@@ -3,23 +3,35 @@ name = "libwinexploit"
 version = "0.1.0"
 edition = "2024"
 
+[workspace]
+members = [
+    ".",
+    "crates/bindings",
+    "crates/codegen",
+    "crates/pe",
+    "crates/runtime",
+    "crates/winapi",
+]
+resolver = "2"
+
 [dependencies]
-byteorder = "1.5.0"
 colored = "3.1.1"
 env_logger = "0.11.8"
 iced-x86 = { version = "1.21.0", default-features = true, features = ["block_encoder", "decoder", "encoder", "instr_info", "intel", "std"], optional = true }
+libwinexploit-bindings = { path = "crates/bindings" }
+libwinexploit-pe = { path = "crates/pe" }
+libwinexploit-runtime = { path = "crates/runtime" }
+libwinexploit-winapi = { path = "crates/winapi" }
 log = "0.4.29"
 memchr = "2.8.0"
-obfstr = {version= "0.4.4", optional = true}
 thiserror = "2.0.17"
-windows-sys = { version = "0.61.2", features = ["Win32_System_Diagnostics_ToolHelp","Win32_System_Threading","Win32_System_ProcessStatus","Win32_System_WindowsProgramming", "Win32_UI_WindowsAndMessaging", "Win32_Foundation", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging", "Win32_Data", "Win32_System_LibraryLoader", "Win32_System_Kernel"] }
 
 
 [features]
 default = ["runtime","obfuscation","hells_gate","hardware_breakpoint"]
-obfuscation = ["dep:obfstr","runtime"]
+obfuscation = ["runtime", "libwinexploit-winapi/obfuscation"]
 runtime = ["dep:iced-x86"]
-hells_gate = ["runtime"]
+hells_gate = ["runtime", "libwinexploit-winapi/hells_gate"]
 hardware_breakpoint = ["runtime"]
 
 [[bin]]
@@ -89,14 +101,7 @@ incremental = false
 rpath = false
 
 [build-dependencies]
-mfa = { git = "https://github.com/natimerry/pocket", version = "0.1.0"}
-bindgen = "0.70"
-syn = { version = "2.0", features = ["full", "parsing"] }
-quote = "1.0"
-indicatif = "0.17"
-
-[target.'cfg(windows)'.build-dependencies]
-winreg = "0.55.0"
+libwinexploit-codegen = { path = "crates/codegen" }
 
 
 [profile.dev]

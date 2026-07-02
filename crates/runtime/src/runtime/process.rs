@@ -1,18 +1,19 @@
 use crate::ExpError;
 use crate::TH32CS_SNAPPROCESS;
-use crate::winapi::CloseHandle;
-use crate::winapi::CreateToolhelp32Snapshot;
-use crate::winapi::DWORD;
-use crate::winapi::GetProcessImageFileNameA;
-use crate::winapi::GetWindowTextA;
-use crate::winapi::HANDLE;
-use crate::winapi::HWND;
-use crate::winapi::OpenProcess;
-use crate::winapi::PROCESSENTRY32;
-use crate::winapi::Process32First;
-use crate::winapi::Process32Next;
-use crate::winapi::raw::GetWindowTextLengthA;
-use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+use libwinexploit_bindings::CloseHandle;
+use libwinexploit_bindings::CreateToolhelp32Snapshot;
+use libwinexploit_bindings::DWORD;
+use libwinexploit_bindings::GetWindowTextA;
+use libwinexploit_bindings::HANDLE;
+use libwinexploit_bindings::HWND;
+use libwinexploit_bindings::K32GetProcessImageFileNameA;
+use libwinexploit_bindings::OpenProcess;
+use libwinexploit_bindings::PROCESSENTRY32;
+use libwinexploit_bindings::Process32First;
+use libwinexploit_bindings::Process32Next;
+use libwinexploit_bindings::raw::GetWindowTextLengthA;
+
+const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
 
 #[derive(Debug)]
 pub struct Process {
@@ -40,7 +41,7 @@ impl Process {
 
         let mut buffer = vec![0u8; 260]; // MAX_PATH
         let len = unsafe {
-            GetProcessImageFileNameA(
+            K32GetProcessImageFileNameA(
                 handle,
                 buffer.as_mut_ptr() as *mut i8, // Cast to *mut i8
                 buffer.len() as u32,

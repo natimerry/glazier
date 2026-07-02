@@ -1,0 +1,8 @@
+[package]
+name = "libwinexploit-bindings"
+version = "0.1.0"
+edition = "2024"
+links = "libwinexploit_bindings"
+
+[build-dependencies]
+libwinexploit-codegen = { path = "../codegen" }

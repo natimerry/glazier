@@ -1,14 +1,14 @@
 use crate::ExpError;
 use crate::pe::export_address_table::ParsedExportFunction;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::runtime::architecture::TargetArchitecture;
-use crate::runtime::architecture::process_architecture;
-use crate::runtime::memory::LocalMemory;
-use crate::runtime::memory::MemoryView;
-use crate::runtime::memory::RemoteMemory;
-use crate::runtime::pe32_runtime::PE32Runtime;
-use crate::runtime::pe64_runtime::PE64Runtime;
-use crate::winapi::HANDLE;
+use crate::architecture::TargetArchitecture;
+use crate::architecture::process_architecture;
+use crate::memory::LocalMemory;
+use crate::memory::MemoryView;
+use crate::memory::RemoteMemory;
+use crate::pe32_runtime::PE32Runtime;
+use crate::pe64_runtime::PE64Runtime;
+use libwinexploit_bindings::HANDLE;
 
 pub enum NativePeRuntime<M: MemoryView> {
     Pe32(PE32Runtime<M>),

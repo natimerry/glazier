@@ -1,0 +1,16 @@
+[package]
+name = "libwinexploit-winapi"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+obfuscation = ["dep:libwinexploit-runtime"]
+hells_gate = ["dep:libwinexploit-runtime"]
+
+[dependencies]
+libwinexploit-bindings = { path = "../bindings" }
+libwinexploit-runtime = { path = "../runtime", optional = true }
+
+[build-dependencies]
+libwinexploit-codegen = { path = "../codegen" }

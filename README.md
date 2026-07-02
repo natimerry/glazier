@@ -60,15 +60,19 @@ With the `hells_gate` feature enabled, the crate exposes syscall-oriented wrappe
 - `runtime`: enables runtime process and memory helpers.
 - `obfuscation`: enables runtime API resolution and generated wrappers.
 - `hells_gate`: enables direct syscall helpers.
+- `hardware_breakpoint`: enables native and WOW64 hardware breakpoints.
 
-Default features are `runtime`, `obfuscation`, and `hells_gate`.
+Default features are `runtime`, `obfuscation`, `hells_gate`, and `hardware_breakpoint`.
 
 ## Project Layout
 
-- `src/pe`: static PE parsing.
-- `src/runtime`: runtime PE, process, export, and memory helpers.
+- `crates/bindings`: the only crate that runs bindgen; exports raw SDK declarations.
+- `crates/pe`: static PE parsing and parsed PE structures.
+- `crates/runtime`: runtime PE, process, export, and memory helpers over raw bindings.
+- `crates/winapi`: generated obfuscated Win32 and NT wrappers.
+- `crates/codegen`: shared private generator logic used by package build scripts.
 - `src/hooking`: pattern scanning and hooking support.
-- `src/consts.rs`: shared Windows-related constants exposed by the crate.
+- `src/hardware_breakpoint.rs`: local and remote hardware-breakpoint support.
 - `src/bin`: small examples and experiments for individual features.
 
 ## Getting Started

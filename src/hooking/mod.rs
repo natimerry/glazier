@@ -1,3 +1,4 @@
+mod callback;
 mod iced_relocator;
 pub mod pattern;
 pub mod trace_instructions;

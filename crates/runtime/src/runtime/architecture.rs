@@ -1,8 +1,8 @@
-use crate::winapi::HANDLE;
-use crate::winapi::raw::CloseHandle;
-use crate::winapi::raw::GetProcessIdOfThread;
-use crate::winapi::raw::IsWow64Process2;
-use crate::winapi::raw::OpenProcess;
+use libwinexploit_bindings::HANDLE;
+use libwinexploit_bindings::raw::CloseHandle;
+use libwinexploit_bindings::raw::GetProcessIdOfThread;
+use libwinexploit_bindings::raw::IsWow64Process2;
+use libwinexploit_bindings::raw::OpenProcess;
 use thiserror::Error;
 
 const IMAGE_FILE_MACHINE_UNKNOWN: u16 = 0;
@@ -78,7 +78,7 @@ pub fn thread_architecture(thread: HANDLE) -> Result<TargetArchitecture, Archite
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::winapi::raw::GetCurrentProcess;
+    use libwinexploit_bindings::raw::GetCurrentProcess;
 
     #[test]
     fn detects_native_process_architecture() {

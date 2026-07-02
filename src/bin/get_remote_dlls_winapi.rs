@@ -1,6 +1,7 @@
 use libwinexploit::runtime::NativePeRuntime;
 use libwinexploit::runtime::process::Process;
-use windows_sys::Win32::System::Threading::PROCESS_ALL_ACCESS;
+
+const PROCESS_ALL_ACCESS: u32 = 0x001f_ffff;
 
 fn analyse_process(process: &Process) {
     let pe = NativePeRuntime::from_handle(process.handle).expect("Failed to inspect remote PE");
