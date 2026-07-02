@@ -1,8 +1,13 @@
 pub mod pattern_traces;
 
-use iced_x86::{
-    Decoder, DecoderOptions, FlowControl, Formatter, FormatterOutput, FormatterTextKind, Instruction, IntelFormatter,
-};
+use iced_x86::Decoder;
+use iced_x86::DecoderOptions;
+use iced_x86::FlowControl;
+use iced_x86::Formatter;
+use iced_x86::FormatterOutput;
+use iced_x86::FormatterTextKind;
+use iced_x86::Instruction;
+use iced_x86::IntelFormatter;
 use log::Level;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,9 +26,9 @@ pub struct DisasmLine {
 pub fn parse_hex_bytes(input: &str) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
 
-    for raw_token in input.split(|c: char| {
-        c.is_whitespace() || matches!(c, ',' | ';' | '[' | ']' | '(' | ')')
-    }) {
+    for raw_token in
+        input.split(|c: char| c.is_whitespace() || matches!(c, ',' | ';' | '[' | ']' | '(' | ')'))
+    {
         let raw_token = raw_token.trim();
 
         if raw_token.is_empty() {
@@ -51,8 +56,8 @@ pub fn parse_hex_bytes(input: &str) -> Result<Vec<u8>, String> {
         }
 
         for pair in token.as_bytes().chunks_exact(2) {
-            let pair = std::str::from_utf8(pair)
-                .map_err(|_| format!("invalid UTF-8 in `{raw_token}`"))?;
+            let pair =
+                std::str::from_utf8(pair).map_err(|_| format!("invalid UTF-8 in `{raw_token}`"))?;
 
             let byte = u8::from_str_radix(pair, 16)
                 .map_err(|_| format!("invalid hex byte `{pair}` in `{raw_token}`"))?;
@@ -82,9 +87,7 @@ pub fn decode_instruction_sequence(
 
         let terminal = matches!(
             instruction.flow_control(),
-            FlowControl::Return
-                | FlowControl::UnconditionalBranch
-                | FlowControl::IndirectBranch
+            FlowControl::Return | FlowControl::UnconditionalBranch | FlowControl::IndirectBranch
         );
 
         instructions.push(instruction);
@@ -136,9 +139,7 @@ pub fn disassemble_bytes(
 
         let terminal = matches!(
             instruction.flow_control(),
-            FlowControl::Return
-                | FlowControl::UnconditionalBranch
-                | FlowControl::IndirectBranch
+            FlowControl::Return | FlowControl::UnconditionalBranch | FlowControl::IndirectBranch
         );
 
         lines.push(DisasmLine {
@@ -195,7 +196,6 @@ pub fn format_disassembly(lines: &[DisasmLine], layout: DisasmLayout) -> String 
     }
 }
 
-
 pub fn log_disassembly(
     label: &str,
     bytes: &[u8],
@@ -208,14 +208,13 @@ pub fn log_disassembly(
     let lines = disassemble_bytes(bytes, bitness, ip, stop_at_terminal);
     let listing = format_disassembly(&lines, layout);
 
-
     match layout {
         DisasmLayout::OneLine => {
-            log::log!(level,"{}: {}", color_label(label), listing);
+            log::log!(level, "{}: {}", color_label(label), listing);
         }
 
         DisasmLayout::MultiLine => {
-            log::log!(level,"{}:\n{}", color_label(label), listing);
+            log::log!(level, "{}:\n{}", color_label(label), listing);
         }
     }
 }
@@ -291,10 +290,7 @@ impl AnsiFormatterOutput {
         }
     }
 
-    fn with_masked_literals(
-        colors: bool,
-        mask_literals: bool,
-    ) -> Self {
+    fn with_masked_literals(colors: bool, mask_literals: bool) -> Self {
         Self {
             text: String::new(),
             colors,
@@ -302,12 +298,10 @@ impl AnsiFormatterOutput {
         }
     }
 
-    fn finish(self) -> String {
-        self.text
-    }
+    fn finish(self) -> String { self.text }
 }
-use colored::{Color, Colorize};
-
+use colored::Color;
+use colored::Colorize;
 
 impl FormatterOutput for AnsiFormatterOutput {
     fn write(&mut self, text: &str, kind: FormatterTextKind) {
@@ -320,21 +314,18 @@ impl FormatterOutput for AnsiFormatterOutput {
         );
 
         if !self.colors {
-            self.text.push_str(if self.mask_literals && is_literal_value {
-                "<disp>"
-            } else {
-                text
-            });
+            self.text
+                .push_str(if self.mask_literals && is_literal_value {
+                    "<disp>"
+                } else {
+                    text
+                });
             return;
         }
 
         if self.mask_literals && is_literal_value {
-            self.text.push_str(
-                &"<disp>"
-                    .bright_white()
-                    .on_bright_red()
-                    .to_string(),
-            );
+            self.text
+                .push_str(&"<disp>".bright_white().on_bright_red().to_string());
             return;
         }
 

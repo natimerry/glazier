@@ -1,8 +1,12 @@
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
+use crate::hooking::trace_instructions::AnsiFormatterOutput;
+use crate::hooking::trace_instructions::DisasmLayout;
+use crate::hooking::trace_instructions::color_label;
+use iced_x86::Decoder;
+use iced_x86::DecoderOptions;
+use iced_x86::Formatter;
+use iced_x86::Instruction;
+use iced_x86::IntelFormatter;
 use log::Level;
-
-use crate::hooking::trace_instructions::{AnsiFormatterOutput, DisasmLayout, color_label};
-
 
 pub fn format_pattern_bytes(bytes: &[Option<u8>]) -> String {
     bytes
@@ -76,29 +80,19 @@ pub fn log_pattern(
     }
 }
 
-fn format_pattern_instruction(
-    instruction: &Instruction,
-    pattern: &[Option<u8>],
-) -> String {
+fn format_pattern_instruction(instruction: &Instruction, pattern: &[Option<u8>]) -> String {
     let has_unknown_constant = pattern.iter().any(Option::is_none);
 
     let colors = std::env::var_os("NO_COLOR").is_none();
 
     let mut formatter = IntelFormatter::new();
-    let mut output = AnsiFormatterOutput::with_masked_literals(
-        colors,
-        has_unknown_constant,
-    );
+    let mut output = AnsiFormatterOutput::with_masked_literals(colors, has_unknown_constant);
 
     formatter.format(instruction, &mut output);
     output.finish()
 }
 
-fn disassemble_pattern(
-    pattern: &[Option<u8>],
-    bitness: u32,
-    ip: u64,
-) -> Vec<PatternDisasmLine> {
+fn disassemble_pattern(pattern: &[Option<u8>], bitness: u32, ip: u64) -> Vec<PatternDisasmLine> {
     // Safe only if wildcards are in displacement/immediate fields.
     // Zero is just a decoder placeholder; it never gets printed.
     let decode_bytes = pattern
@@ -106,12 +100,7 @@ fn disassemble_pattern(
         .map(|byte| byte.unwrap_or(0))
         .collect::<Vec<_>>();
 
-    let mut decoder = Decoder::with_ip(
-        bitness,
-        &decode_bytes,
-        ip,
-        DecoderOptions::NONE,
-    );
+    let mut decoder = Decoder::with_ip(bitness, &decode_bytes, ip, DecoderOptions::NONE);
 
     let mut lines = Vec::new();
 
@@ -120,10 +109,7 @@ fn disassemble_pattern(
         let instruction = decoder.decode();
         let end = decoder.position();
 
-        if instruction.is_invalid()
-            || end <= start
-            || end > pattern.len()
-        {
+        if instruction.is_invalid() || end <= start || end > pattern.len() {
             lines.push(PatternDisasmLine {
                 ip: ip + start as u64,
                 bytes: pattern[start..].to_vec(),
@@ -140,16 +126,13 @@ fn disassemble_pattern(
         let wildcard_touches_encoding = instruction_pattern
             .iter()
             .enumerate()
-            .any(|(index, byte)| {
-                byte.is_none() && !is_constant_byte(index, &offsets)
-            });
+            .any(|(index, byte)| byte.is_none() && !is_constant_byte(index, &offsets));
 
         if wildcard_touches_encoding {
             lines.push(PatternDisasmLine {
                 ip: instruction.ip(),
                 bytes: pattern[start..].to_vec(),
-                text: "<unknown instruction: wildcard in opcode/prefix/ModRM/SIB>"
-                    .to_owned(),
+                text: "<unknown instruction: wildcard in opcode/prefix/ModRM/SIB>".to_owned(),
             });
 
             // Cannot trust the decoded length after this point.
@@ -159,20 +142,14 @@ fn disassemble_pattern(
         lines.push(PatternDisasmLine {
             ip: instruction.ip(),
             bytes: instruction_pattern.to_vec(),
-            text: format_pattern_instruction(
-                &instruction,
-                instruction_pattern,
-            ),
+            text: format_pattern_instruction(&instruction, instruction_pattern),
         });
     }
 
     lines
 }
 
-fn is_constant_byte(
-    index: usize,
-    offsets: &iced_x86::ConstantOffsets,
-) -> bool {
+fn is_constant_byte(index: usize, offsets: &iced_x86::ConstantOffsets) -> bool {
     in_range(
         index,
         offsets.displacement_offset(),
@@ -191,23 +168,11 @@ fn is_constant_byte(
     )
 }
 
-fn in_range(
-    index: usize,
-    offset: usize,
-    size: usize,
-    present: bool,
-) -> bool {
-    present
-        && size != 0
-        && index >= offset
-        && index < offset + size
+fn in_range(index: usize, offset: usize, size: usize, present: bool) -> bool {
+    present && size != 0 && index >= offset && index < offset + size
 }
 
-
-fn format_pattern_disassembly(
-    lines: &[PatternDisasmLine],
-    layout: DisasmLayout,
-) -> String {
+fn format_pattern_disassembly(lines: &[PatternDisasmLine], layout: DisasmLayout) -> String {
     if lines.is_empty() {
         return "<no decodable instructions>".to_owned();
     }
