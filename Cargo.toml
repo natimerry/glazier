@@ -58,6 +58,11 @@ path = "src/bin/hookpattern.rs"
 required-features = ["runtime"]
 
 [[bin]]
+name = "winapi_callback_hook"
+path = "src/bin/winapi_callback_hook.rs"
+required-features = ["runtime"]
+
+[[bin]]
 name = "hardware_breakpoint"
 path = "src/bin/hardware_breakpoint.rs"
 required-features = ["hardware_breakpoint"]

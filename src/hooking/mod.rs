@@ -2,6 +2,11 @@ mod iced_relocator;
 pub mod pattern;
 pub mod trace_instructions;
 
+#[allow(non_snake_case, non_camel_case_types, dead_code)]
+pub mod winapi {
+    include!(concat!(env!("OUT_DIR"), "/winapi_hook_bindings.rs"));
+}
+
 use crate::ExpError;
 use crate::runtime::NativePeRuntime as NativePERuntime;
 use crate::runtime::memory::MemoryView;
@@ -65,6 +70,50 @@ pub enum HookError {
 
     #[error("Tried to hook an external process!")]
     ExternalHook,
+
+    #[error("A callback hook is already installed for this WinAPI function")]
+    CallbackAlreadyInstalled,
+}
+
+/// Owns a generated WinAPI callback hook.
+///
+/// Generated callback state is immutable and retained for the process lifetime
+/// so the detour hot path needs no lock or reference-count operation.
+pub struct CallbackHook {
+    entry: HookEntry,
+}
+
+impl CallbackHook {
+    #[doc(hidden)]
+    pub fn __new(entry: HookEntry) -> Self { Self { entry } }
+
+    pub fn enable(&mut self) -> Result<(), HookError> {
+        unsafe { self.entry.enable(&crate::runtime::memory::LocalMemory) }
+    }
+
+    pub fn disable(&mut self) -> Result<(), HookError> {
+        unsafe { self.entry.disable(&crate::runtime::memory::LocalMemory) }
+    }
+
+    pub fn is_enabled(&self) -> bool { self.entry.is_enabled() }
+}
+
+impl std::ops::Deref for CallbackHook {
+    type Target = HookEntry;
+
+    fn deref(&self) -> &Self::Target { &self.entry }
+}
+
+impl std::ops::DerefMut for CallbackHook {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.entry }
+}
+
+impl Drop for CallbackHook {
+    fn drop(&mut self) {
+        if self.entry.is_enabled() {
+            let _ = unsafe { self.entry.disable(&crate::runtime::memory::LocalMemory) };
+        }
+    }
 }
 
 #[repr(C)]
@@ -442,6 +491,22 @@ impl HookEntry {
         Ok(())
     }
 
+    pub unsafe fn enable<M: MemoryView>(&mut self, m: &M) -> Result<(), HookError> {
+        if !self.enabled {
+            self.toggle(m)?;
+        }
+        Ok(())
+    }
+
+    pub unsafe fn disable<M: MemoryView>(&mut self, m: &M) -> Result<(), HookError> {
+        if self.enabled {
+            self.toggle(m)?;
+        }
+        Ok(())
+    }
+
+    pub fn is_enabled(&self) -> bool { self.enabled }
+
     pub fn original(&self) -> *mut u8 { self.trampoline }
 }
 #[repr(C, packed)]
@@ -483,6 +548,9 @@ mod tests {
     use crate::runtime::memory::LocalMemory;
     use crate::winapi::raw::VirtualAlloc;
     use crate::winapi::raw::VirtualFree;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
 
     const MEM_COMMIT: u32 = 0x1000;
     const MEM_RELEASE: u32 = 0x8000;
@@ -557,5 +625,27 @@ mod tests {
 
             assert_ne!(VirtualFree(target as *mut _, 0, MEM_RELEASE), 0);
         }
+    }
+
+    #[test]
+    fn generated_winapi_hook_invokes_typed_callback() {
+        let _guard = GLOBAL_LOCK.lock().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let callback_hits = Arc::clone(&hits);
+        let expected = unsafe { crate::winapi::raw::GetCurrentProcessId() };
+
+        let mut hook = winapi::GetCurrentProcessId(move |original| {
+            callback_hits.fetch_add(1, Ordering::SeqCst);
+            unsafe { original() }
+        })
+        .unwrap();
+
+        hook.enable().unwrap();
+        assert_eq!(
+            unsafe { crate::winapi::raw::GetCurrentProcessId() },
+            expected
+        );
+        assert_eq!(hits.load(Ordering::SeqCst), 1);
+        hook.disable().unwrap();
     }
 }

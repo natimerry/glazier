@@ -272,6 +272,8 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
     let content = std::fs::read_to_string(raw_path).unwrap();
     let file = syn::parse_file(&content).unwrap();
 
+    generate_winapi_hook_bindings(&file, out_dir);
+
     let wrapped_path = PathBuf::from(out_dir).join("winapi_bindings.rs");
     let mut output = File::create(&wrapped_path).unwrap();
 
@@ -390,6 +392,186 @@ fn generate_wrapped_bindings(raw_path: &PathBuf, out_dir: &str) {
             log!("  ... and {} more", failed_funcs.len() - 5);
         }
     }
+}
+
+fn generate_winapi_hook_bindings(file: &syn::File, out_dir: &str) {
+    use syn::ForeignItem;
+    use syn::Item;
+
+    let path = PathBuf::from(out_dir).join("winapi_hook_bindings.rs");
+    let mut output = File::create(path).expect("Couldn't create WinAPI hook bindings");
+
+    writeln!(output, "// Auto-generated typed WinAPI hook installers").unwrap();
+
+    for item in &file.items {
+        let Item::ForeignMod(foreign_mod) = item else {
+            continue;
+        };
+
+        for foreign_item in &foreign_mod.items {
+            let ForeignItem::Fn(function) = foreign_item else {
+                continue;
+            };
+
+            if function.sig.variadic.is_some() {
+                continue;
+            }
+
+            generate_winapi_hook_binding(&mut output, function)
+                .expect("Couldn't generate a WinAPI hook binding");
+        }
+    }
+}
+
+fn generate_winapi_hook_binding<W: Write>(
+    output: &mut W,
+    function: &syn::ForeignItemFn,
+) -> std::io::Result<()> {
+    let name = &function.sig.ident;
+    let function_name = name.to_string();
+    let original_type = format!("{function_name}Original");
+    let dll = guess_dll(&function_name);
+    let arguments = function
+        .sig
+        .inputs
+        .iter()
+        .enumerate()
+        .filter_map(|(index, input)| {
+            let syn::FnArg::Typed(argument) = input else {
+                return None;
+            };
+            let argument_name = match &*argument.pat {
+                syn::Pat::Ident(ident) => ident.ident.to_string(),
+                _ => format!("arg{index}"),
+            };
+            Some((
+                argument_name,
+                hook_type_to_string(&argument.ty),
+                type_to_string(&argument.ty),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let return_type = match &function.sig.output {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => hook_type_to_string(ty),
+    };
+    let display_return_type = match &function.sig.output {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => type_to_string(ty),
+    };
+    let callback_return_type = if return_type == "!" {
+        "::std::convert::Infallible".to_string()
+    } else {
+        return_type.clone()
+    };
+    let display_callback_return_type = if return_type == "!" {
+        "Infallible".to_string()
+    } else {
+        display_return_type.clone()
+    };
+    let callback_success = if return_type == "!" {
+        "match value {}"
+    } else {
+        "value"
+    };
+    let argument_declarations = arguments
+        .iter()
+        .map(|(name, ty, _)| format!("{name}: {ty}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let argument_names = arguments
+        .iter()
+        .map(|(name, _, _)| name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let callback_types = std::iter::once(original_type.clone())
+        .chain(arguments.iter().map(|(_, ty, _)| ty.clone()))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let callback_call = if argument_names.is_empty() {
+        "state.original".to_string()
+    } else {
+        format!("state.original, {argument_names}")
+    };
+    let display_parameters = std::iter::once(format!("original: {original_type}"))
+        .chain(
+            arguments
+                .iter()
+                .map(|(name, _, display_type)| format!("{name}: {display_type}")),
+        )
+        .collect::<Vec<_>>()
+        .join(", ");
+    let documentation = format!(
+        "Installs a callback hook for `{function_name}`.\n\nCallback signature: `|{display_parameters}| -> {display_callback_return_type}`."
+    );
+
+    writeln!(output, "#[doc = {documentation:?}]")?;
+    writeln!(output, "#[allow(non_camel_case_types, non_snake_case)]")?;
+    writeln!(
+        output,
+        "pub type {original_type} = unsafe extern \"system\" fn({argument_declarations}) -> {return_type};"
+    )?;
+    writeln!(output, "#[doc = {documentation:?}]")?;
+    writeln!(output, "#[allow(non_snake_case)]")?;
+    writeln!(
+        output,
+        "pub fn {function_name}(callback: impl Fn({callback_types}) -> {callback_return_type} + Send + Sync + 'static) -> Result<super::CallbackHook, super::HookError> {{"
+    )?;
+    writeln!(
+        output,
+        "    type __Callback = dyn Fn({callback_types}) -> {callback_return_type} + Send + Sync + 'static;"
+    )?;
+    writeln!(output, "    struct __State {{")?;
+    writeln!(output, "        callback: Box<__Callback>,")?;
+    writeln!(output, "        original: {original_type},")?;
+    writeln!(output, "    }}")?;
+    writeln!(
+        output,
+        "    static __STATE: ::std::sync::OnceLock<__State> = ::std::sync::OnceLock::new();"
+    )?;
+    writeln!(
+        output,
+        "    unsafe extern \"system\" fn __detour({argument_declarations}) -> {return_type} {{"
+    )?;
+    writeln!(
+        output,
+        "        let state = __STATE.get().unwrap_or_else(|| ::std::process::abort());"
+    )?;
+    writeln!(
+        output,
+        "        match ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| (state.callback)({callback_call}))) {{"
+    )?;
+    writeln!(output, "            Ok(value) => {callback_success},")?;
+    writeln!(output, "            Err(_) => ::std::process::abort(),")?;
+    writeln!(output, "        }}")?;
+    writeln!(output, "    }}")?;
+    writeln!(output, "    if __STATE.get().is_some() {{")?;
+    writeln!(
+        output,
+        "        return Err(super::HookError::CallbackAlreadyInstalled);"
+    )?;
+    writeln!(output, "    }}")?;
+    writeln!(
+        output,
+        "    let callback: Box<__Callback> = Box::new(callback);"
+    )?;
+    writeln!(
+        output,
+        "    let entry = super::HookEntry::from_winapi_function(\"{function_name}\", Some(\"{dll}\"), __detour as *const () as *mut u8)?;"
+    )?;
+    writeln!(
+        output,
+        "    let original: {original_type} = unsafe {{ ::std::mem::transmute(entry.original()) }};"
+    )?;
+    writeln!(
+        output,
+        "    __STATE.set(__State {{ callback, original }}).map_err(|_| super::HookError::CallbackAlreadyInstalled)?;"
+    )?;
+    writeln!(output, "    Ok(super::CallbackHook::__new(entry))")?;
+    writeln!(output, "}}")?;
+    writeln!(output)?;
+
+    Ok(())
 }
 
 fn generate_wrapper(output: &mut File, func: &syn::ForeignItemFn) -> std::io::Result<()> {
@@ -796,6 +978,197 @@ fn type_to_string(ty: &syn::Type) -> String {
             quote::quote!(#ty).to_string()
         }
     }
+}
+
+fn hook_type_to_string(ty: &syn::Type) -> String {
+    match ty {
+        syn::Type::Path(type_path) if type_path.qself.is_none() => {
+            let mut rendered = String::new();
+            let first = type_path
+                .path
+                .segments
+                .first()
+                .map(|segment| segment.ident.to_string());
+
+            if type_path.path.leading_colon.is_some() {
+                rendered.push_str("::");
+            } else if first.as_deref().is_some_and(should_qualify_winapi_type) {
+                rendered.push_str("crate::winapi::");
+            }
+
+            rendered.push_str(
+                &type_path
+                    .path
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        let ident = segment.ident.to_string();
+                        match &segment.arguments {
+                            syn::PathArguments::None => ident,
+                            syn::PathArguments::AngleBracketed(arguments) => {
+                                let arguments = arguments
+                                    .args
+                                    .iter()
+                                    .map(|argument| match argument {
+                                        syn::GenericArgument::Type(ty) => hook_type_to_string(ty),
+                                        syn::GenericArgument::Lifetime(lifetime) => {
+                                            quote::quote!(#lifetime).to_string()
+                                        }
+                                        syn::GenericArgument::Const(expression) => {
+                                            quote::quote!(#expression).to_string()
+                                        }
+                                        _ => quote::quote!(#argument).to_string(),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                format!("{ident}<{arguments}>")
+                            }
+                            syn::PathArguments::Parenthesized(arguments) => {
+                                let inputs = arguments
+                                    .inputs
+                                    .iter()
+                                    .map(hook_type_to_string)
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let output = match &arguments.output {
+                                    syn::ReturnType::Default => String::new(),
+                                    syn::ReturnType::Type(_, ty) => {
+                                        format!(" -> {}", hook_type_to_string(ty))
+                                    }
+                                };
+                                format!("{ident}({inputs}){output}")
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("::"),
+            );
+            rendered
+        }
+        syn::Type::Ptr(pointer) => {
+            let mutability = if pointer.mutability.is_some() {
+                "mut "
+            } else {
+                "const "
+            };
+            format!("*{mutability}{}", hook_type_to_string(&pointer.elem))
+        }
+        syn::Type::Reference(reference) => {
+            let lifetime = reference
+                .lifetime
+                .as_ref()
+                .map(|lifetime| format!("{} ", quote::quote!(#lifetime)))
+                .unwrap_or_default();
+            let mutability = if reference.mutability.is_some() {
+                "mut "
+            } else {
+                ""
+            };
+            format!(
+                "&{lifetime}{mutability}{}",
+                hook_type_to_string(&reference.elem)
+            )
+        }
+        syn::Type::Array(array) => {
+            let length = &array.len;
+            format!(
+                "[{}; {}]",
+                hook_type_to_string(&array.elem),
+                quote::quote!(#length)
+            )
+        }
+        syn::Type::Slice(slice) => format!("[{}]", hook_type_to_string(&slice.elem)),
+        syn::Type::Tuple(tuple) => {
+            if tuple.elems.is_empty() {
+                return "()".to_string();
+            }
+            let elements = tuple
+                .elems
+                .iter()
+                .map(hook_type_to_string)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let trailing_comma = if tuple.elems.len() == 1 { "," } else { "" };
+            format!("({elements}{trailing_comma})")
+        }
+        syn::Type::BareFn(function) => {
+            let unsafety = if function.unsafety.is_some() {
+                "unsafe "
+            } else {
+                ""
+            };
+            let abi = function
+                .abi
+                .as_ref()
+                .map(|abi| {
+                    let name = abi
+                        .name
+                        .as_ref()
+                        .map(|name| name.value())
+                        .unwrap_or_else(|| "C".to_string());
+                    format!("extern \"{name}\" ")
+                })
+                .unwrap_or_default();
+            let mut inputs = function
+                .inputs
+                .iter()
+                .map(|argument| {
+                    let name = argument
+                        .name
+                        .as_ref()
+                        .map(|(name, _)| format!("{name}: "))
+                        .unwrap_or_default();
+                    format!("{name}{}", hook_type_to_string(&argument.ty))
+                })
+                .collect::<Vec<_>>();
+            if function.variadic.is_some() {
+                inputs.push("...".to_string());
+            }
+            let output = match &function.output {
+                syn::ReturnType::Default => String::new(),
+                syn::ReturnType::Type(_, ty) => format!(" -> {}", hook_type_to_string(ty)),
+            };
+            format!("{unsafety}{abi}fn({}){output}", inputs.join(", "))
+        }
+        syn::Type::Paren(paren) => format!("({})", hook_type_to_string(&paren.elem)),
+        syn::Type::Group(group) => hook_type_to_string(&group.elem),
+        syn::Type::Never(_) => "!".to_string(),
+        _ => type_to_string(ty),
+    }
+}
+
+fn should_qualify_winapi_type(first_segment: &str) -> bool {
+    !matches!(
+        first_segment,
+        "std"
+            | "core"
+            | "alloc"
+            | "crate"
+            | "self"
+            | "super"
+            | "Option"
+            | "Result"
+            | "Box"
+            | "String"
+            | "Vec"
+            | "u8"
+            | "u16"
+            | "u32"
+            | "u64"
+            | "u128"
+            | "usize"
+            | "i8"
+            | "i16"
+            | "i32"
+            | "i64"
+            | "i128"
+            | "isize"
+            | "f32"
+            | "f64"
+            | "bool"
+            | "char"
+            | "str"
+    )
 }
 
 fn guess_dll(func_name: &str) -> &'static str {
