@@ -558,62 +558,50 @@ fn generate_single_wrapper_hells_gate(
 ) -> std::io::Result<()> {
     let target_func = real_func_name.unwrap_or(name);
 
-    // Normal version (No change - still calls standard API)
-    writeln!(output, "#[cfg(not(feature = \"hells_gate\"))]")?;
-    writeln!(output, "#[inline]")?;
+    writeln!(output, "#[cfg_attr(not(feature = \"hells_gate\"), inline)]")?;
     writeln!(
         output,
         "pub unsafe fn {}({}) {} {{",
         name, args_decl_str, return_annotation
     )?;
+    writeln!(output, "    #[cfg(not(feature = \"hells_gate\"))]")?;
+    writeln!(output, "    {{")?;
     writeln!(
         output,
-        "    unsafe {{ raw::{}({}) }} ",
+        "        unsafe {{ raw::{}({}) }}",
         target_func, arg_names_str
     )?;
-    writeln!(output, "}}")?;
-    writeln!(output)?;
-
-    // Hell's Gate version
-    writeln!(output, "#[cfg(feature = \"hells_gate\")]")?;
+    writeln!(output, "    }}")?;
+    writeln!(output, "    #[cfg(feature = \"hells_gate\")]")?;
+    writeln!(output, "    {{")?;
+    writeln!(output, "        static mut SSN: u16 = 0;")?;
     writeln!(
         output,
-        "pub unsafe fn {}({}) {} {{",
-        name, args_decl_str, return_annotation
+        "        static INIT: std::sync::Once = std::sync::Once::new();"
     )?;
-
-    // We don't need FnType for syscalls, we just need the SSN
-    writeln!(output)?;
-    writeln!(output, "    static mut SSN: u16 = 0;")?;
-    writeln!(
-        output,
-        "    static INIT: std::sync::Once = std::sync::Once::new();"
-    )?;
-    writeln!(output)?;
-    writeln!(output, "    INIT.call_once(|| {{")?;
+    writeln!(output, "        INIT.call_once(|| {{")?;
 
     // Only works for NTDLL, but we keep 'dll' variable for flexibility if needed
     // In practice, Hell's Gate is strictly for "NTDLL.DLL"
     writeln!(
         output,
-        "        if let Ok(module) = NativePERuntime::from_module(\"{}\") {{",
+        "            if let Ok(module) = NativePERuntime::from_module(\"{}\") {{",
         dll
     )?;
     writeln!(
         output,
-        "            if let Ok(export) = module.find_export(\"{}\") {{",
+        "                if let Ok(export) = module.find_export(\"{}\") {{",
         target_func
     )?;
     writeln!(
         output,
-        "                if let Ok(s) = module.get_syscall_num(export) {{"
+        "                    if let Ok(s) = module.get_syscall_num(export) {{"
     )?;
-    writeln!(output, "                    unsafe {{ SSN = s; }}")?;
+    writeln!(output, "                        unsafe {{ SSN = s; }}")?;
+    writeln!(output, "                    }}")?;
     writeln!(output, "                }}")?;
     writeln!(output, "            }}")?;
-    writeln!(output, "        }}")?;
-    writeln!(output, "    }});")?;
-    writeln!(output)?;
+    writeln!(output, "        }});")?;
 
     // Invocation via the syscall! macro
     // We explicitly cast the result to the expected return type
@@ -626,9 +614,10 @@ fn generate_single_wrapper_hells_gate(
     writeln!(
         output,
         // Remove the hardcoded comma after SSN used in the template
-        "    crate::syscall!(unsafe {{ SSN }}{}) as {}",
+        "        crate::syscall!(unsafe {{ SSN }}{}) as {}",
         invocation_args, return_type_str
     )?;
+    writeln!(output, "    }}")?;
     writeln!(output, "}}")?;
     writeln!(output)?;
 
