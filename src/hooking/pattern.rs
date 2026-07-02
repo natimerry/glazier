@@ -135,7 +135,7 @@ impl PatternBuilder {
         }
     }
 
-    pub fn generate_wildcards(&mut self) {
+    pub fn generate_wildcards(mut self) -> PatternBuilder {
         let bytes = self
             .bytes
             .iter()
@@ -204,6 +204,8 @@ impl PatternBuilder {
         );
 
         self.bytes = pattern;
+
+        self
     }
 }
 

@@ -44,12 +44,9 @@ fn main() {
 
         let mut pattern = Pattern::builder()
             .pattern("48 83 EC 38 45 33 DB 44 39 1D 46 3C 07 00 74 25")
-            .unwrap();
-
-        pattern.generate_wildcards();
-
-        let mut pattern = pattern.build();
-
+            .unwrap()
+            .generate_wildcards().build();
+        
         let memory_view = LocalMemory {};
 
         let results = pattern
