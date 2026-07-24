@@ -281,10 +281,16 @@ impl Pattern {
                         break;
                     }
 
+                    // Concrete runs are an acceleration index, not the whole
+                    // pattern. Short fixed fragments between wildcarded
+                    // operands must still be checked or they can produce
+                    // false-positive matches.
                     let matched = self.concrete_runs.iter().all(|run| {
                         let s = pat_base + run.offset;
                         let e = s + run.bytes.len();
                         e <= got && data[s..e] == run.bytes[..]
+                    }) && self.bytes.iter().enumerate().all(|(j, expected)| {
+                        expected.is_none_or(|byte| data[pat_base + j] == byte)
                     });
 
                     if matched {
@@ -491,5 +497,34 @@ impl ConcreteRun {
         }
 
         if runs.is_empty() { None } else { Some(runs) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::memory::LocalMemory;
+
+    #[test]
+    fn accelerated_scan_validates_short_fixed_fragments() {
+        let data = [
+            0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE,
+            0xFF, 0x00, 0x11, 0x22,
+        ];
+        let mut pattern = Pattern::builder()
+            .pattern("AA BB CC DD EE FF ?? 11 22")
+            .unwrap()
+            .build();
+
+        let matches = pattern
+            .scan(
+                &LocalMemory,
+                data.as_ptr(),
+                data.len(),
+                PatternScanOption::Begin,
+            )
+            .unwrap();
+
+        assert_eq!(matches, vec![unsafe { data.as_ptr().add(9) }]);
     }
 }
