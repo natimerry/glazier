@@ -123,6 +123,7 @@ pub fn generate_winapi_bindings(out_dir: &str, phnt_dir: &Path) -> PathBuf {
 #include <tlhelp32.h>
 #include <psapi.h>
 #include <winuser.h>
+#include <commdlg.h>
 "#,
         )
         .clang_arg("-fms-compatibility")
@@ -1014,6 +1015,13 @@ fn should_qualify_winapi_type(first_segment: &str) -> bool {
 
 fn guess_dll(func_name: &str) -> &'static str {
     let name_lower = func_name.to_lowercase();
+
+    if name_lower.contains("openfilename")
+        || name_lower.contains("savefilename")
+        || name_lower.contains("commdlg")
+    {
+        return "COMDLG32.DLL";
+    }
 
     // Check prefixes first
     if name_lower.starts_with("zw") || name_lower.starts_with("nt") {

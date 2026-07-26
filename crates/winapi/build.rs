@@ -7,5 +7,8 @@ fn main() {
         .expect("bindings crate did not publish its raw declarations");
 
     glazier_codegen::generate_wrapped_bindings(Path::new(&raw), &out_dir);
+    if env::var_os("CARGO_FEATURE_OBFUSCATION").is_none() {
+        println!("cargo:rustc-link-lib=Comdlg32");
+    }
     println!("cargo:rerun-if-changed={raw}");
 }
