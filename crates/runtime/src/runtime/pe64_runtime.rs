@@ -10,13 +10,13 @@ use crate::pe::image_nt_header::ImageNtHeaders64;
 use crate::pe::image_section_header::ImageSectionHeader;
 use crate::utils::get_peb;
 use crate::utils::get_teb;
-use libwinexploit_bindings::HANDLE;
-use libwinexploit_bindings::LDR_DATA_TABLE_ENTRY;
-use libwinexploit_bindings::LIST_ENTRY;
-use libwinexploit_bindings::NtQueryInformationProcess;
-use libwinexploit_bindings::PEB;
-use libwinexploit_bindings::PROCESS_BASIC_INFORMATION;
-use libwinexploit_bindings::TEB;
+use glazier_bindings::HANDLE;
+use glazier_bindings::LDR_DATA_TABLE_ENTRY;
+use glazier_bindings::LIST_ENTRY;
+use glazier_bindings::NtQueryInformationProcess;
+use glazier_bindings::PEB;
+use glazier_bindings::PROCESS_BASIC_INFORMATION;
+use glazier_bindings::TEB;
 use std::mem::offset_of;
 
 // Use manual PEB_LDR_DATA definition because bindgen generates incomplete

@@ -6,11 +6,11 @@ use crate::pe::image_nt_header::ImageNtHeaders32;
 use crate::pe::image_section_header::ImageSectionHeader;
 use crate::memory::MemoryView;
 use crate::memory::RemoteMemory;
-use libwinexploit_bindings::HANDLE;
-use libwinexploit_bindings::LDR_DATA_TABLE_ENTRY32;
-use libwinexploit_bindings::NtQueryInformationProcess;
-use libwinexploit_bindings::PEB_LDR_DATA32;
-use libwinexploit_bindings::PEB32;
+use glazier_bindings::HANDLE;
+use glazier_bindings::LDR_DATA_TABLE_ENTRY32;
+use glazier_bindings::NtQueryInformationProcess;
+use glazier_bindings::PEB_LDR_DATA32;
+use glazier_bindings::PEB32;
 use std::mem::offset_of;
 
 const PROCESS_WOW64_INFORMATION: u32 = 26;

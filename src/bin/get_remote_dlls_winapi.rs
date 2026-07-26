@@ -1,5 +1,5 @@
-use libwinexploit::runtime::NativePeRuntime;
-use libwinexploit::runtime::process::Process;
+use glazier::runtime::NativePeRuntime;
+use glazier::runtime::process::Process;
 
 const PROCESS_ALL_ACCESS: u32 = 0x001f_ffff;
 

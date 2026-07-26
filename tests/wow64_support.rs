@@ -5,18 +5,18 @@
     feature = "hardware_breakpoint"
 ))]
 
-use libwinexploit::hardware_breakpoint::HardwareBreakpointCondition;
-use libwinexploit::hardware_breakpoint::HardwareBreakpointSize;
-use libwinexploit::hardware_breakpoint::HardwareBreakpointSlot;
-use libwinexploit::hardware_breakpoint::NativeHardwareBreakpoint;
-use libwinexploit::runtime::NativePeRuntime;
-use libwinexploit::runtime::TargetArchitecture;
-use libwinexploit::winapi::THREADENTRY32;
-use libwinexploit::winapi::raw::CloseHandle;
-use libwinexploit::winapi::raw::CreateToolhelp32Snapshot;
-use libwinexploit::winapi::raw::OpenProcess;
-use libwinexploit::winapi::raw::Thread32First;
-use libwinexploit::winapi::raw::Thread32Next;
+use glazier::hardware_breakpoint::HardwareBreakpointCondition;
+use glazier::hardware_breakpoint::HardwareBreakpointSize;
+use glazier::hardware_breakpoint::HardwareBreakpointSlot;
+use glazier::hardware_breakpoint::NativeHardwareBreakpoint;
+use glazier::runtime::NativePeRuntime;
+use glazier::runtime::TargetArchitecture;
+use glazier::winapi::THREADENTRY32;
+use glazier::winapi::raw::CloseHandle;
+use glazier::winapi::raw::CreateToolhelp32Snapshot;
+use glazier::winapi::raw::OpenProcess;
+use glazier::winapi::raw::Thread32First;
+use glazier::winapi::raw::Thread32Next;
 use std::os::windows::process::CommandExt;
 use std::process::Child;
 use std::process::Command;
@@ -93,8 +93,8 @@ fn x64_host_parses_and_sets_breakpoint_on_wow64_target() {
 }
 
 fn wait_for_runtime(
-    process: libwinexploit::winapi::HANDLE,
-) -> NativePeRuntime<libwinexploit::runtime::memory::RemoteMemory> {
+    process: glazier::winapi::HANDLE,
+) -> NativePeRuntime<glazier::runtime::memory::RemoteMemory> {
     let mut last_error = String::new();
     for _ in 0..100 {
         match NativePeRuntime::from_handle(process) {
@@ -107,9 +107,9 @@ fn wait_for_runtime(
 }
 
 fn wait_for_module(
-    process: libwinexploit::winapi::HANDLE,
+    process: glazier::winapi::HANDLE,
     module: &str,
-) -> NativePeRuntime<libwinexploit::runtime::memory::RemoteMemory> {
+) -> NativePeRuntime<glazier::runtime::memory::RemoteMemory> {
     let mut last_error = String::new();
     for _ in 0..100 {
         match NativePeRuntime::from_module_remote(process, module) {

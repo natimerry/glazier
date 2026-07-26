@@ -1,7 +1,7 @@
 use env_logger::Env;
-use libwinexploit::runtime::pe64_runtime::PE64Runtime;
-use libwinexploit::syscall;
-use libwinexploit::winapi::LARGE_INTEGER;
+use glazier::runtime::pe64_runtime::PE64Runtime;
+use glazier::syscall;
+use glazier::winapi::LARGE_INTEGER;
 use log::error;
 use log::info;
 pub fn main() {

@@ -1,5 +1,5 @@
-use libwinexploit::utils::to_wide;
-use libwinexploit::winapi::MessageBoxW;
+use glazier::utils::to_wide;
+use glazier::winapi::MessageBoxW;
 
 const MB_OK: u32 = 0;
 

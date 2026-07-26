@@ -1,17 +1,17 @@
 use crate::ExpError;
 use crate::TH32CS_SNAPPROCESS;
-use libwinexploit_bindings::CloseHandle;
-use libwinexploit_bindings::CreateToolhelp32Snapshot;
-use libwinexploit_bindings::DWORD;
-use libwinexploit_bindings::GetWindowTextA;
-use libwinexploit_bindings::HANDLE;
-use libwinexploit_bindings::HWND;
-use libwinexploit_bindings::K32GetProcessImageFileNameA;
-use libwinexploit_bindings::OpenProcess;
-use libwinexploit_bindings::PROCESSENTRY32;
-use libwinexploit_bindings::Process32First;
-use libwinexploit_bindings::Process32Next;
-use libwinexploit_bindings::raw::GetWindowTextLengthA;
+use glazier_bindings::CloseHandle;
+use glazier_bindings::CreateToolhelp32Snapshot;
+use glazier_bindings::DWORD;
+use glazier_bindings::GetWindowTextA;
+use glazier_bindings::HANDLE;
+use glazier_bindings::HWND;
+use glazier_bindings::K32GetProcessImageFileNameA;
+use glazier_bindings::OpenProcess;
+use glazier_bindings::PROCESSENTRY32;
+use glazier_bindings::Process32First;
+use glazier_bindings::Process32Next;
+use glazier_bindings::raw::GetWindowTextLengthA;
 
 const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
 

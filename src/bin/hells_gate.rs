@@ -1,5 +1,5 @@
-use libwinexploit::runtime::pe64_runtime::PE64Runtime;
-use libwinexploit::syscall;
+use glazier::runtime::pe64_runtime::PE64Runtime;
+use glazier::syscall;
 
 const MEM_COMMIT: usize = 0x1000;
 const MEM_RESERVE: usize = 0x2000;

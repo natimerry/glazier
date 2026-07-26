@@ -1,21 +1,21 @@
 #![allow(unsafe_op_in_unsafe_fn)]
 
-pub use libwinexploit_pe::ByteReader;
-pub use libwinexploit_pe::ExpError;
-pub use libwinexploit_pe::pe;
-pub use libwinexploit_pe::pe::pe32_static::*;
-pub use libwinexploit_pe::pe::pe64_static::*;
-pub use libwinexploit_runtime as runtime;
-pub use libwinexploit_runtime::consts;
-pub use libwinexploit_runtime::consts::*;
-pub use libwinexploit_runtime::containing_record;
-pub use libwinexploit_winapi as winapi;
-pub use libwinexploit_winapi::syscall;
-pub use libwinexploit_winapi::to_syscall_arg;
+pub use glazier_pe::ByteReader;
+pub use glazier_pe::ExpError;
+pub use glazier_pe::pe;
+pub use glazier_pe::pe::pe32_static::*;
+pub use glazier_pe::pe::pe64_static::*;
+pub use glazier_runtime as runtime;
+pub use glazier_runtime::consts;
+pub use glazier_runtime::consts::*;
+pub use glazier_runtime::containing_record;
+pub use glazier_winapi as winapi;
+pub use glazier_winapi::syscall;
+pub use glazier_winapi::to_syscall_arg;
 
 pub mod utils {
-    pub use libwinexploit_pe::utils::*;
-    pub use libwinexploit_runtime::utils::*;
+    pub use glazier_pe::utils::*;
+    pub use glazier_runtime::utils::*;
 }
 
 #[cfg(feature = "hardware_breakpoint")]

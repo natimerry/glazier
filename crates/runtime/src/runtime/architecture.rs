@@ -1,8 +1,8 @@
-use libwinexploit_bindings::HANDLE;
-use libwinexploit_bindings::raw::CloseHandle;
-use libwinexploit_bindings::raw::GetProcessIdOfThread;
-use libwinexploit_bindings::raw::IsWow64Process2;
-use libwinexploit_bindings::raw::OpenProcess;
+use glazier_bindings::HANDLE;
+use glazier_bindings::raw::CloseHandle;
+use glazier_bindings::raw::GetProcessIdOfThread;
+use glazier_bindings::raw::IsWow64Process2;
+use glazier_bindings::raw::OpenProcess;
 use thiserror::Error;
 
 const IMAGE_FILE_MACHINE_UNKNOWN: u16 = 0;
@@ -78,7 +78,7 @@ pub fn thread_architecture(thread: HANDLE) -> Result<TargetArchitecture, Archite
 #[cfg(test)]
 mod tests {
     use super::*;
-    use libwinexploit_bindings::raw::GetCurrentProcess;
+    use glazier_bindings::raw::GetCurrentProcess;
 
     #[test]
     fn detects_native_process_architecture() {

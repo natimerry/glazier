@@ -1,4 +1,4 @@
-use libwinexploit::runtime::process::*;
+use glazier::runtime::process::*;
 
 const PROCESS_ALL_ACCESS: u32 = 0x001f_ffff;
 

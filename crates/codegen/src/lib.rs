@@ -207,7 +207,7 @@ pub fn generate_wrapped_bindings(raw_path: &Path, out_dir: &str) {
     writeln!(output).unwrap();
 
     writeln!(output, "pub mod raw {{").unwrap();
-    writeln!(output, "    pub use libwinexploit_bindings::raw::*;").unwrap();
+    writeln!(output, "    pub use glazier_bindings::raw::*;").unwrap();
     writeln!(output, "}}").unwrap();
     writeln!(output).unwrap();
 
@@ -219,7 +219,7 @@ pub fn generate_wrapped_bindings(raw_path: &Path, out_dir: &str) {
     writeln!(output, "#[cfg(feature = \"hells_gate\")]").unwrap();
     writeln!(
         output,
-        "use libwinexploit_runtime::NativePeRuntime as NativePERuntime;"
+        "use glazier_runtime::NativePeRuntime as NativePERuntime;"
     )
     .unwrap();
 

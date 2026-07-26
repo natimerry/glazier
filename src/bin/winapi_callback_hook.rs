@@ -1,7 +1,7 @@
-use libwinexploit::hooking::winapi as hooks;
-use libwinexploit::utils::to_wide;
-use libwinexploit::winapi::CloseHandle;
-use libwinexploit::winapi::CreateFileW;
+use glazier::hooking::winapi as hooks;
+use glazier::utils::to_wide;
+use glazier::winapi::CloseHandle;
+use glazier::winapi::CreateFileW;
 use std::ptr::null_mut;
 
 const GENERIC_READ: u32 = 0x8000_0000;

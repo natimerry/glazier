@@ -1,4 +1,4 @@
-use libwinexploit_runtime::NativePeRuntime;
+use glazier_runtime::NativePeRuntime;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicPtr;
 use std::sync::atomic::Ordering;

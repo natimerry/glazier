@@ -1,8 +1,8 @@
 [package]
-name = "libwinexploit-bindings"
+name = "glazier-bindings"
 version = "0.1.0"
 edition = "2024"
-links = "libwinexploit_bindings"
+links = "glazier_bindings"
 
 [build-dependencies]
-libwinexploit-codegen = { path = "../codegen" }
+glazier-codegen = { path = "../codegen" }

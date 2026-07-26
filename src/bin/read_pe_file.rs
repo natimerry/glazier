@@ -1,4 +1,4 @@
-use libwinexploit::pe::pe64_static::PE64Static;
+use glazier::pe::pe64_static::PE64Static;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;

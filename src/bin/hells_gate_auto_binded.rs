@@ -1,7 +1,7 @@
-use libwinexploit::winapi::HANDLE;
-use libwinexploit::winapi::NTSTATUS;
-use libwinexploit::winapi::NtAllocateVirtualMemoryHellsGate;
-use libwinexploit::winapi::PVOID;
+use glazier::winapi::HANDLE;
+use glazier::winapi::NTSTATUS;
+use glazier::winapi::NtAllocateVirtualMemoryHellsGate;
+use glazier::winapi::PVOID;
 use std::ptr;
 
 const MEM_COMMIT: u32 = 0x1000;

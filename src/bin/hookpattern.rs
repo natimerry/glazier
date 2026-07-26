@@ -1,9 +1,9 @@
-use libwinexploit::hooking::HookEntry;
-use libwinexploit::hooking::pattern::Pattern;
-use libwinexploit::hooking::pattern::PatternScanOption;
-use libwinexploit::runtime::memory::LocalMemory;
-use libwinexploit::winapi::LoadLibraryW;
-use libwinexploit::winapi::MessageBoxW;
+use glazier::hooking::HookEntry;
+use glazier::hooking::pattern::Pattern;
+use glazier::hooking::pattern::PatternScanOption;
+use glazier::runtime::memory::LocalMemory;
+use glazier::winapi::LoadLibraryW;
+use glazier::winapi::MessageBoxW;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicPtr;

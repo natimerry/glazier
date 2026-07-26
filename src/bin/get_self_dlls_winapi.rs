@@ -1,5 +1,5 @@
-use libwinexploit::utils::to_wide;
-use libwinexploit::winapi::*;
+use glazier::utils::to_wide;
+use glazier::winapi::*;
 
 const MB_OK: u32 = 0;
 fn main() {

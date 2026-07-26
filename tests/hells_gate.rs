@@ -2,8 +2,8 @@
 
 #[cfg(all(test, windows))]
 mod syscall_tests {
-    use libwinexploit::runtime::pe64_runtime::PE64Runtime;
-    use libwinexploit::syscall;
+    use glazier::runtime::pe64_runtime::PE64Runtime;
+    use glazier::syscall;
 
     const MEM_COMMIT: usize = 0x1000;
     const MEM_RESERVE: usize = 0x2000;
@@ -63,14 +63,14 @@ mod syscall_tests {
 
 #[cfg(all(test, windows))]
 mod hellsgate_tests {
-    use libwinexploit::syscall;
-    use libwinexploit::winapi::GetModuleHandleA;
-    use libwinexploit::winapi::GetProcAddress;
-    use libwinexploit::winapi::HANDLE;
-    use libwinexploit::winapi::LARGE_INTEGER;
-    use libwinexploit::winapi::NTSTATUS;
-    use libwinexploit::winapi::NtAllocateVirtualMemoryHellsGate;
-    use libwinexploit::winapi::PVOID;
+    use glazier::syscall;
+    use glazier::winapi::GetModuleHandleA;
+    use glazier::winapi::GetProcAddress;
+    use glazier::winapi::HANDLE;
+    use glazier::winapi::LARGE_INTEGER;
+    use glazier::winapi::NTSTATUS;
+    use glazier::winapi::NtAllocateVirtualMemoryHellsGate;
+    use glazier::winapi::PVOID;
     use std::ptr;
 
     const MEM_COMMIT: u32 = 0x1000;
@@ -126,7 +126,7 @@ mod hellsgate_tests {
 
         for test_ssn in 0x50..=0x65 {
             let mut time = unsafe {
-                let t = std::mem::MaybeUninit::<libwinexploit::winapi::LARGE_INTEGER>::zeroed();
+                let t = std::mem::MaybeUninit::<glazier::winapi::LARGE_INTEGER>::zeroed();
                 t.assume_init()
             };
 
@@ -145,7 +145,7 @@ mod hellsgate_tests {
 
 #[cfg(all(test, windows))]
 mod hellsgate_arity_tests {
-    use libwinexploit::winapi::*;
+    use glazier::winapi::*;
     use std::ptr;
 
     const STATUS_SUCCESS: i32 = 0;

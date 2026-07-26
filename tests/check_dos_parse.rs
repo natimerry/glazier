@@ -1,4 +1,4 @@
-use libwinexploit::PE64Static;
+use glazier::PE64Static;
 use std::path::PathBuf;
 
 fn get_sample_path(filename: &str) -> PathBuf {

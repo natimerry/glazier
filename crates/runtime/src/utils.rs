@@ -1,6 +1,6 @@
 #[cfg(target_arch = "x86_64")]
-use libwinexploit_bindings::PEB;
-use libwinexploit_bindings::TEB;
+use glazier_bindings::PEB;
+use glazier_bindings::TEB;
 
 #[macro_export]
 macro_rules! containing_record {

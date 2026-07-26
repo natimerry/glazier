@@ -1,6 +1,6 @@
-# libwinexploit
+# glazier
 
-`libwinexploit` is an experimental Rust library for Windows PE analysis, runtime process interaction, dynamic API resolution, and direct syscall-oriented research workflows.
+`glazier` is an experimental Rust library for Windows PE analysis, runtime process interaction, dynamic API resolution, and direct syscall-oriented research workflows.
 
 > Warning
 > This project is still heavy WIP. APIs are unstable, internal layouts may change quickly, and syscall-related paths still need broader validation.
@@ -114,7 +114,7 @@ LLMs are used to translate some C structs to Rust to save time and write tests a
 Further more recently AI has been used to assist with the following tasks:
 - Splitting up the library into crates
 - Improve pattern scanning performance
-- Rebranding over the entire codebase (basically an overturned `s/libwinexploit/glazier/g` because im lazy)
+- Rebranding the entire codebase as `glazier`.
 - Writing the callback code generation from manual handwritten example provided. (Just look at build.rs that shit is too much brain damage for me to write)
 
 Eitherways any LLM generated line is thouroughly scrutinised and tested. The only exception is codegen where I test output instead of the generated garbage to preserve sanity.

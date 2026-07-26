@@ -2,11 +2,11 @@
 
 pub mod consts;
 pub mod utils;
-pub use libwinexploit_pe::ByteReader;
-pub use libwinexploit_pe::ExpError;
-pub use libwinexploit_pe::pe;
-pub use libwinexploit_pe::pe::pe32_static::*;
-pub use libwinexploit_pe::pe::pe64_static::*;
+pub use glazier_pe::ByteReader;
+pub use glazier_pe::ExpError;
+pub use glazier_pe::pe;
+pub use glazier_pe::pe::pe32_static::*;
+pub use glazier_pe::pe::pe64_static::*;
 
 #[path = "runtime/architecture.rs"]
 pub mod architecture;

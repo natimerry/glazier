@@ -164,6 +164,67 @@ dependencies = [
 ]
 
 [[package]]
+name = "glazier"
+version = "0.1.0"
+dependencies = [
+ "colored",
+ "env_logger",
+ "glazier-bindings",
+ "glazier-codegen",
+ "glazier-pe",
+ "glazier-runtime",
+ "glazier-winapi",
+ "iced-x86",
+ "log",
+ "memchr",
+ "thiserror",
+]
+
+[[package]]
+name = "glazier-bindings"
+version = "0.1.0"
+dependencies = [
+ "glazier-codegen",
+]
+
+[[package]]
+name = "glazier-codegen"
+version = "0.1.0"
+dependencies = [
+ "bindgen",
+ "quote",
+ "syn",
+ "winreg",
+]
+
+[[package]]
+name = "glazier-pe"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "thiserror",
+]
+
+[[package]]
+name = "glazier-runtime"
+version = "0.1.0"
+dependencies = [
+ "glazier-bindings",
+ "glazier-pe",
+ "log",
+ "thiserror",
+]
+
+[[package]]
+name = "glazier-winapi"
+version = "0.1.0"
+dependencies = [
+ "glazier-bindings",
+ "glazier-codegen",
+ "glazier-runtime",
+]
+
+[[package]]
 name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -237,67 +298,6 @@ checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
 dependencies = [
  "cfg-if",
  "windows-link",
-]
-
-[[package]]
-name = "libwinexploit"
-version = "0.1.0"
-dependencies = [
- "colored",
- "env_logger",
- "iced-x86",
- "libwinexploit-bindings",
- "libwinexploit-codegen",
- "libwinexploit-pe",
- "libwinexploit-runtime",
- "libwinexploit-winapi",
- "log",
- "memchr",
- "thiserror",
-]
-
-[[package]]
-name = "libwinexploit-bindings"
-version = "0.1.0"
-dependencies = [
- "libwinexploit-codegen",
-]
-
-[[package]]
-name = "libwinexploit-codegen"
-version = "0.1.0"
-dependencies = [
- "bindgen",
- "quote",
- "syn",
- "winreg",
-]
-
-[[package]]
-name = "libwinexploit-pe"
-version = "0.1.0"
-dependencies = [
- "byteorder",
- "thiserror",
-]
-
-[[package]]
-name = "libwinexploit-runtime"
-version = "0.1.0"
-dependencies = [
- "libwinexploit-bindings",
- "libwinexploit-pe",
- "log",
- "thiserror",
-]
-
-[[package]]
-name = "libwinexploit-winapi"
-version = "0.1.0"
-dependencies = [
- "libwinexploit-bindings",
- "libwinexploit-codegen",
- "libwinexploit-runtime",
 ]
 
 [[package]]

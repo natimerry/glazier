@@ -1,8 +1,8 @@
-use libwinexploit::hooking::HookEntry;
-use libwinexploit::runtime::memory::LocalMemory;
-use libwinexploit::winapi::GetProcAddress;
-use libwinexploit::winapi::LoadLibraryW;
-use libwinexploit::winapi::MessageBoxW;
+use glazier::hooking::HookEntry;
+use glazier::runtime::memory::LocalMemory;
+use glazier::winapi::GetProcAddress;
+use glazier::winapi::LoadLibraryW;
+use glazier::winapi::MessageBoxW;
 use std::ffi::c_void;
 use std::ptr::null_mut;
 use std::sync::atomic::AtomicPtr;

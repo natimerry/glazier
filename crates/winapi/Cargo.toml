@@ -1,16 +1,16 @@
 [package]
-name = "libwinexploit-winapi"
+name = "glazier-winapi"
 version = "0.1.0"
 edition = "2024"
 
 [features]
 default = []
-obfuscation = ["dep:libwinexploit-runtime"]
-hells_gate = ["dep:libwinexploit-runtime"]
+obfuscation = ["dep:glazier-runtime"]
+hells_gate = ["dep:glazier-runtime"]
 
 [dependencies]
-libwinexploit-bindings = { path = "../bindings" }
-libwinexploit-runtime = { path = "../runtime", optional = true }
+glazier-bindings = { path = "../bindings" }
+glazier-runtime = { path = "../runtime", optional = true }
 
 [build-dependencies]
-libwinexploit-codegen = { path = "../codegen" }
+glazier-codegen = { path = "../codegen" }

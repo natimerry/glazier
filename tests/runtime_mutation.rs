@@ -1,8 +1,8 @@
 #[cfg(all(test, windows, target_arch = "x86_64"))]
 mod tests {
-    use libwinexploit::runtime::memory::LocalMemory;
-    use libwinexploit::runtime::pe64_runtime::PE64Runtime;
-    use libwinexploit::winapi::VirtualAlloc;
+    use glazier::runtime::memory::LocalMemory;
+    use glazier::runtime::pe64_runtime::PE64Runtime;
+    use glazier::winapi::VirtualAlloc;
     use std::ptr::null_mut;
 
     const MEM_COMMIT: u32 = 0x1000;

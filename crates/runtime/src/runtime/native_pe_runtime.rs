@@ -8,7 +8,7 @@ use crate::memory::MemoryView;
 use crate::memory::RemoteMemory;
 use crate::pe32_runtime::PE32Runtime;
 use crate::pe64_runtime::PE64Runtime;
-use libwinexploit_bindings::HANDLE;
+use glazier_bindings::HANDLE;
 
 pub enum NativePeRuntime<M: MemoryView> {
     Pe32(PE32Runtime<M>),

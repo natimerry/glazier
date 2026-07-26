@@ -1,5 +1,5 @@
-use libwinexploit::runtime::NativePeRuntime;
-use libwinexploit::utils::to_wide;
+use glazier::runtime::NativePeRuntime;
+use glazier::utils::to_wide;
 type LoadLibraryWFn = unsafe extern "system" fn(*const u16) -> *mut core::ffi::c_void;
 type MessageBoxWFn =
     unsafe extern "system" fn(*mut core::ffi::c_void, *const u16, *const u16, u32) -> i32;

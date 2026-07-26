@@ -1,18 +1,18 @@
 use crate::ExpError;
-use libwinexploit_bindings::BOOL;
-use libwinexploit_bindings::DWORD;
-use libwinexploit_bindings::HANDLE;
-use libwinexploit_bindings::LPVOID;
-use libwinexploit_bindings::MEMORY_BASIC_INFORMATION;
-use libwinexploit_bindings::NtReadVirtualMemory;
-use libwinexploit_bindings::NtWriteVirtualMemory;
-use libwinexploit_bindings::PDWORD;
-use libwinexploit_bindings::ReadProcessMemory;
-use libwinexploit_bindings::SIZE_T;
-use libwinexploit_bindings::VirtualProtect;
-use libwinexploit_bindings::VirtualProtectEx;
-use libwinexploit_bindings::VirtualQuery;
-use libwinexploit_bindings::VirtualQueryEx;
+use glazier_bindings::BOOL;
+use glazier_bindings::DWORD;
+use glazier_bindings::HANDLE;
+use glazier_bindings::LPVOID;
+use glazier_bindings::MEMORY_BASIC_INFORMATION;
+use glazier_bindings::NtReadVirtualMemory;
+use glazier_bindings::NtWriteVirtualMemory;
+use glazier_bindings::PDWORD;
+use glazier_bindings::ReadProcessMemory;
+use glazier_bindings::SIZE_T;
+use glazier_bindings::VirtualProtect;
+use glazier_bindings::VirtualProtectEx;
+use glazier_bindings::VirtualQuery;
+use glazier_bindings::VirtualQueryEx;
 
 pub trait MemoryView {
     fn read<T: Copy>(&self, address: u64) -> Result<T, ExpError>;

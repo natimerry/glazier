@@ -1,5 +1,5 @@
-use libwinexploit::runtime::NativePeRuntime;
-use libwinexploit::utils::to_wide;
+use glazier::runtime::NativePeRuntime;
+use glazier::utils::to_wide;
 
 fn main() {
     env_logger::init();

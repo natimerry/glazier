@@ -1,10 +1,10 @@
 [package]
-name = "libwinexploit-runtime"
+name = "glazier-runtime"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-libwinexploit-bindings = { path = "../bindings" }
-libwinexploit-pe = { path = "../pe" }
+glazier-bindings = { path = "../bindings" }
+glazier-pe = { path = "../pe" }
 log = "0.4.29"
 thiserror = "2.0.17"
