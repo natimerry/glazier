@@ -111,6 +111,14 @@ Recent project history is tracked in [CHANGELOG.md](CHANGELOG.md).
 
 LLMs are used to translate some C structs to Rust to save time and write tests and test binaries as code quality on those dont matter imo.
 
+Further more recently AI has been used to assist with the following tasks:
+- Splitting up the library into crates
+- Improve pattern scanning performance
+- Rebranding over the entire codebase (basically an overturned `s/libwinexploit/glazier/g` because im lazy)
+- Writing the callback code generation from manual handwritten example provided. (Just look at build.rs that shit is too much brain damage for me to write)
+
+Eitherways any LLM generated line is thouroughly scrutinised and tested. The only exception is codegen where I test output instead of the generated garbage to preserve sanity.
+
 ## License
 
 License selection is not finalized yet.
