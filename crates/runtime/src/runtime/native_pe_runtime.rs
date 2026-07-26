@@ -1,11 +1,11 @@
 use crate::ExpError;
-use crate::pe::export_address_table::ParsedExportFunction;
-use crate::pe::image_section_header::ImageSectionHeader;
 use crate::architecture::TargetArchitecture;
 use crate::architecture::process_architecture;
 use crate::memory::LocalMemory;
 use crate::memory::MemoryView;
 use crate::memory::RemoteMemory;
+use crate::pe::export_address_table::ParsedExportFunction;
+use crate::pe::image_section_header::ImageSectionHeader;
 use crate::pe32_runtime::PE32Runtime;
 use crate::pe64_runtime::PE64Runtime;
 use glazier_bindings::HANDLE;

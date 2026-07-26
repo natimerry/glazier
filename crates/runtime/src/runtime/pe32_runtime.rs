@@ -1,11 +1,11 @@
 use crate::ExpError;
+use crate::memory::MemoryView;
+use crate::memory::RemoteMemory;
 use crate::pe::export_address_table::ImageExportDirectory;
 use crate::pe::image_dos_header::ImageDosHeader;
 use crate::pe::image_nt_header::IMAGE_DIRECTORY_ENTRY_EXPORT;
 use crate::pe::image_nt_header::ImageNtHeaders32;
 use crate::pe::image_section_header::ImageSectionHeader;
-use crate::memory::MemoryView;
-use crate::memory::RemoteMemory;
 use glazier_bindings::HANDLE;
 use glazier_bindings::LDR_DATA_TABLE_ENTRY32;
 use glazier_bindings::NtQueryInformationProcess;

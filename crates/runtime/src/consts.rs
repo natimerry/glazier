@@ -68,11 +68,11 @@ pub const TH32CS_SNAPMODULE32: u32 = 16u32;
 pub const TH32CS_SNAPPROCESS: u32 = 2u32;
 pub const TH32CS_SNAPTHREAD: u32 = 4u32;
 
-pub const PAGE_NOACCESS: u32          = 0x01;
-pub const PAGE_READONLY: u32          = 0x02;
-pub const PAGE_READWRITE: u32         = 0x04;
-pub const PAGE_WRITECOPY: u32         = 0x08;
-pub const PAGE_EXECUTE: u32           = 0x10;
-pub const PAGE_EXECUTE_READ: u32      = 0x20;
+pub const PAGE_NOACCESS: u32 = 0x01;
+pub const PAGE_READONLY: u32 = 0x02;
+pub const PAGE_READWRITE: u32 = 0x04;
+pub const PAGE_WRITECOPY: u32 = 0x08;
+pub const PAGE_EXECUTE: u32 = 0x10;
+pub const PAGE_EXECUTE_READ: u32 = 0x20;
 pub const PAGE_EXECUTE_READWRITE: u32 = 0x40;
 pub const PAGE_EXECUTE_WRITECOPY: u32 = 0x80;
