@@ -32,7 +32,9 @@ unsafe extern "system" fn hooked_message_box(
 fn to_wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(std::iter::once(0)).collect() }
 
 fn main() {
-    env_logger::builder().filter_level(log::LevelFilter::Trace).init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
     unsafe {
         // Load user32
         let module = LoadLibraryW(to_wide("user32.dll").as_ptr());
@@ -45,8 +47,9 @@ fn main() {
         let mut pattern = Pattern::builder()
             .pattern("48 83 EC 38 45 33 DB 44 39 1D 46 3C 07 00 74 25")
             .unwrap()
-            .generate_wildcards().build();
-        
+            .generate_wildcards()
+            .build();
+
         let memory_view = LocalMemory {};
 
         let results = pattern

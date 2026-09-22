@@ -227,6 +227,49 @@ impl Pattern {
         size: usize,
         opt: PatternScanOption,
     ) -> Option<Vec<*const u8>> {
+        self.scan_impl(memory_reader, base, size, opt, self.return_num)
+    }
+
+    /// Finds the match start nearest to any of `anchors`, in either direction.
+    ///
+    /// Pass instruction addresses returned by `XrefScanner` to find a signature
+    /// near a string reference. Distance is measured between start addresses;
+    /// ties choose the lower match address. Only matches wholly inside the
+    /// supplied region are considered. Returns `None` for empty anchors or no
+    /// matches. Ignores [`PatternBuilder::scan_number`] so a closer match
+    /// cannot be hidden by a result limit.
+    pub fn scan_closest<M: MemoryView>(
+        &self,
+        memory_reader: &M,
+        base: *const u8,
+        size: usize,
+        anchors: &[*const u8],
+    ) -> Option<*const u8> {
+        if anchors.is_empty() {
+            return None;
+        }
+        let mut anchors: Vec<usize> = anchors.iter().map(|p| *p as usize).collect();
+        anchors.sort_unstable();
+        anchors.dedup();
+        self.scan_impl(memory_reader, base, size, PatternScanOption::Begin, None)?
+            .into_iter()
+            .min_by_key(|p| {
+                let address = *p as usize;
+                let i = anchors.partition_point(|a| *a < address);
+                let before = i.checked_sub(1).map(|i| address.abs_diff(anchors[i]));
+                let after = anchors.get(i).map(|a| address.abs_diff(*a));
+                (before.into_iter().chain(after).min().unwrap(), address)
+            })
+    }
+
+    fn scan_impl<M: MemoryView>(
+        &self,
+        memory_reader: &M,
+        base: *const u8,
+        size: usize,
+        opt: PatternScanOption,
+        return_num: Option<usize>,
+    ) -> Option<Vec<*const u8>> {
         log_pattern(
             "Searching For:",
             &self.bytes,
@@ -237,7 +280,7 @@ impl Pattern {
         );
 
         let n = self.bytes.len();
-        if size < n {
+        if n == 0 || size < n || (base as usize).checked_add(size).is_none() {
             return None;
         }
 
@@ -249,7 +292,11 @@ impl Pattern {
         let mut off = 0usize;
 
         let no_wildcards = self.bytes.iter().all(|b| b.is_some());
-        let first_byte = self.bytes.iter().find_map(|b| *b);
+        let first_byte = self
+            .bytes
+            .iter()
+            .enumerate()
+            .find_map(|(i, b)| b.map(|b| (i, b)));
         // if we can split this crap up
         if !self.concrete_runs.is_empty() {
             let anchor = &self.concrete_runs[0];
@@ -261,7 +308,7 @@ impl Pattern {
             let mut off = 0usize;
 
             'chunks: while off + n <= size {
-                if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+                if return_num.is_some_and(|cap| matches.len() >= cap) {
                     break;
                 }
                 let to_read = (CHUNK + overlap).min(size - off);
@@ -294,14 +341,12 @@ impl Pattern {
                     });
 
                     if matched {
-                        unsafe {
-                            let addr = match opt {
-                                PatternScanOption::Begin => base.add(off + pat_base),
-                                PatternScanOption::End => base.add(off + pat_base + n),
-                            };
-                            matches.push(addr);
-                        }
-                        if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+                        let addr = match opt {
+                            PatternScanOption::Begin => base.wrapping_add(off + pat_base),
+                            PatternScanOption::End => base.wrapping_add(off + pat_base + n),
+                        };
+                        matches.push(addr);
+                        if return_num.is_some_and(|cap| matches.len() >= cap) {
                             break 'chunks;
                         }
                     }
@@ -317,7 +362,7 @@ impl Pattern {
         }
 
         'chunks: while off + n <= size {
-            if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+            if return_num.is_some_and(|cap| matches.len() >= cap) {
                 break;
             }
 
@@ -329,8 +374,11 @@ impl Pattern {
 
             let data = &buf[..got];
 
-            if let Some(b) = first_byte {
-                for i in memchr::memchr_iter(b, data) {
+            if let Some((anchor_offset, b)) = first_byte {
+                for pos in memchr::memchr_iter(b, data) {
+                    let Some(i) = pos.checked_sub(anchor_offset) else {
+                        continue;
+                    };
                     if i + n > got {
                         break;
                     }
@@ -346,15 +394,13 @@ impl Pattern {
                     };
 
                     if matched {
-                        unsafe {
-                            let addr = match opt {
-                                PatternScanOption::Begin => base.add(off + i),
-                                PatternScanOption::End => base.add(off + i + n),
-                            };
-                            matches.push(addr);
-                        }
+                        let addr = match opt {
+                            PatternScanOption::Begin => base.wrapping_add(off + i),
+                            PatternScanOption::End => base.wrapping_add(off + i + n),
+                        };
+                        matches.push(addr);
 
-                        if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+                        if return_num.is_some_and(|cap| matches.len() >= cap) {
                             break 'chunks;
                         }
                     }
@@ -362,14 +408,12 @@ impl Pattern {
             } else {
                 // pattern is entirely wildcards
                 for i in 0..=got - n {
-                    unsafe {
-                        let addr = match opt {
-                            PatternScanOption::Begin => base.add(off + i),
-                            PatternScanOption::End => base.add(off + i + n),
-                        };
-                        matches.push(addr);
-                    }
-                    if self.return_num.is_some_and(|cap| matches.len() >= cap) {
+                    let addr = match opt {
+                        PatternScanOption::Begin => base.wrapping_add(off + i),
+                        PatternScanOption::End => base.wrapping_add(off + i + n),
+                    };
+                    matches.push(addr);
+                    if return_num.is_some_and(|cap| matches.len() >= cap) {
                         break 'chunks;
                     }
                 }
@@ -504,6 +548,89 @@ impl ConcreteRun {
 mod tests {
     use super::*;
     use crate::runtime::memory::LocalMemory;
+
+    #[test]
+    fn closest_uses_all_anchors_and_breaks_ties_by_lower_address() {
+        let data = [0xcc, 0, 0, 0, 0xcc, 0, 0, 0, 0xcc];
+        let pattern = Pattern::builder().byte(0xcc).scan_number(0).build();
+        let at = |i| data.as_ptr().wrapping_add(i);
+        assert_eq!(
+            pattern.scan_closest(&LocalMemory, at(0), data.len(), &[at(2)]),
+            Some(at(0))
+        );
+        assert_eq!(
+            pattern.scan_closest(&LocalMemory, at(0), data.len(), &[at(7), at(2), at(7)]),
+            Some(at(8))
+        );
+        assert_eq!(
+            pattern.scan_closest(&LocalMemory, at(0), data.len(), &[at(4)]),
+            Some(at(4))
+        );
+        assert_eq!(
+            pattern.scan_closest(&LocalMemory, at(0), data.len(), &[]),
+            None
+        );
+        assert_eq!(pattern.scan_closest(&LocalMemory, at(1), 3, &[at(0)]), None);
+    }
+
+    #[test]
+    fn leading_wildcards_and_empty_patterns() {
+        let data = [0, 0xab, 0xcd, 0, 0xab, 0xcd];
+        let mut pattern = Pattern::builder().pattern("?? AB CD").unwrap().build();
+        assert_eq!(
+            pattern.scan(
+                &LocalMemory,
+                data.as_ptr(),
+                data.len(),
+                PatternScanOption::Begin
+            ),
+            Some(vec![data.as_ptr(), data.as_ptr().wrapping_add(3)])
+        );
+        assert_eq!(
+            pattern.scan_closest(
+                &LocalMemory,
+                data.as_ptr(),
+                data.len(),
+                &[data.as_ptr().wrapping_add(4)]
+            ),
+            Some(data.as_ptr().wrapping_add(3))
+        );
+        let mut empty = Pattern::builder().build();
+        assert_eq!(
+            empty.scan(
+                &LocalMemory,
+                data.as_ptr(),
+                data.len(),
+                PatternScanOption::Begin
+            ),
+            None
+        );
+        assert_eq!(
+            empty.scan_closest(&LocalMemory, data.as_ptr(), data.len(), &[data.as_ptr()]),
+            None
+        );
+    }
+
+    #[test]
+    fn closest_finds_patterns_across_chunk_boundaries() {
+        let chunk = 4 * 1024 * 1024;
+        let mut data = vec![0; chunk + 16];
+        data[chunk - 2..chunk + 5].copy_from_slice(&[1, 2, 3, 4, 5, 6, 7]);
+        let pattern = Pattern::builder().bytes(&[1, 2, 3, 4, 5, 6, 7]).build();
+        assert_eq!(
+            pattern.scan_closest(
+                &LocalMemory,
+                data.as_ptr(),
+                data.len(),
+                &[data.as_ptr().wrapping_add(chunk)]
+            ),
+            Some(data.as_ptr().wrapping_add(chunk - 2))
+        );
+        assert_eq!(
+            pattern.scan_closest(&LocalMemory, data.as_ptr(), chunk, &[data.as_ptr()]),
+            None
+        );
+    }
 
     #[test]
     fn accelerated_scan_validates_short_fixed_fragments() {

@@ -47,8 +47,9 @@ fn dump_bytes(label: &str, ptr: *const u8, len: usize) {
 }
 
 fn main() {
-    env_logger::builder().filter_level(log::LevelFilter::Trace).init();
-    
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Trace)
+        .init();
 
     unsafe {
         // Load User32 and resolve MessageBoxW
