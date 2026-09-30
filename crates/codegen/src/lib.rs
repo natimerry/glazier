@@ -1,10 +1,12 @@
 use std::env;
-use std::ffi::OsString;
 use std::fs::File;
 use std::fs::{self};
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+
+#[cfg(windows)]
+use std::ffi::OsString;
 
 macro_rules! log {
     ($($tokens: tt)*) => {
@@ -41,7 +43,9 @@ Looked in HKLM\SOFTWARE\Microsoft\Windows Kits\Installed Roots (and WOW6432Node)
 }
 
 #[cfg(not(windows))]
-fn windows_kits_root10(workspace: &Path) -> PathBuf { workspace.join("windows-kit") }
+fn windows_kits_root10(workspace: &Path) -> PathBuf {
+    workspace.join("windows-kit")
+}
 
 #[cfg(windows)]
 fn newest_windows_sdk_include_dir(kits_root10: &Path) -> PathBuf {
@@ -417,40 +421,23 @@ fn generate_winapi_hook_binding<W: Write>(
         "Installs a callback hook for `{function_name}`.\n\nCallback signature: `|{display_parameters}| -> {display_callback_return_type}`."
     );
 
-    writeln!(output, "#[allow(non_camel_case_types, non_snake_case)]")?;
-    writeln!(
-        output,
-        "pub type {original_type} = unsafe extern \"system\" fn({argument_declarations}) -> {return_type};"
-    )?;
-    writeln!(output, "#[allow(non_snake_case)]")?;
-    writeln!(output, "struct __{function_name}Slot;")?;
-    writeln!(
-        output,
-        "impl super::callback::CallbackSlot for __{function_name}Slot {{"
-    )?;
-    writeln!(
-        output,
-        "    fn state() -> &'static ::std::sync::atomic::AtomicPtr<()> {{"
-    )?;
-    writeln!(
-        output,
-        "        static STATE: ::std::sync::atomic::AtomicPtr<()> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());"
-    )?;
-    writeln!(output, "        &STATE")?;
-    writeln!(output, "    }}")?;
-    writeln!(output, "}}")?;
-    writeln!(output, "#[doc = {documentation:?}]")?;
-    writeln!(output, "#[allow(non_snake_case)]")?;
-    writeln!(
-        output,
-        "pub fn {function_name}(callback: impl Fn({callback_types}) -> {callback_return_type} + Send + Sync + 'static) -> Result<super::CallbackHook, super::HookError> {{"
-    )?;
-    writeln!(
-        output,
-        "    super::callback::{installer}::<{installer_types}>(callback, \"{function_name}\", \"{dll}\")"
-    )?;
-    writeln!(output, "}}")?;
-    writeln!(output)?;
+    writeln!(output, "#[allow(non_camel_case_types, non_snake_case)]
+pub type {original_type} = unsafe extern \"system\" fn({argument_declarations}) -> {return_type};
+#[allow(non_snake_case)]
+struct __{function_name}Slot;
+impl super::callback::CallbackSlot for __{function_name}Slot {{
+    fn state() -> &'static ::std::sync::atomic::AtomicPtr<()> {{
+        static STATE: ::std::sync::atomic::AtomicPtr<()> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
+        &STATE
+    }}
+}}
+#[doc = {documentation:?}]
+#[allow(non_snake_case)]
+pub fn {function_name}(callback: impl Fn({callback_types}) -> {callback_return_type} + Send + Sync + 'static) -> Result<super::CallbackHook, super::HookError> {{
+    super::callback::{installer}::<{installer_types}>(callback, \"{function_name}\", \"{dll}\")
+}}
+
+")?;
 
     Ok(())
 }
@@ -559,68 +546,47 @@ fn generate_single_wrapper_hells_gate(
 ) -> std::io::Result<()> {
     let target_func = real_func_name.unwrap_or(name);
 
-    writeln!(output, "#[cfg_attr(not(feature = \"hells_gate\"), inline)]")?;
     writeln!(
         output,
-        "pub unsafe fn {}({}) {} {{",
-        name, args_decl_str, return_annotation
-    )?;
-    writeln!(output, "    #[cfg(not(feature = \"hells_gate\"))]")?;
-    writeln!(output, "    {{")?;
-    writeln!(
-        output,
-        "        unsafe {{ raw::{}({}) }}",
-        target_func, arg_names_str
-    )?;
-    writeln!(output, "    }}")?;
-    writeln!(output, "    #[cfg(feature = \"hells_gate\")]")?;
-    writeln!(output, "    {{")?;
-    writeln!(output, "        static mut SSN: u16 = 0;")?;
-    writeln!(
-        output,
-        "        static INIT: std::sync::Once = std::sync::Once::new();"
-    )?;
-    writeln!(output, "        INIT.call_once(|| {{")?;
-
-    // Only works for NTDLL, but we keep 'dll' variable for flexibility if needed
-    // In practice, Hell's Gate is strictly for "NTDLL.DLL"
-    writeln!(
-        output,
-        "            if let Ok(module) = NativePERuntime::from_module(\"{}\") {{",
-        dll
-    )?;
-    writeln!(
-        output,
-        "                if let Ok(export) = module.find_export(\"{}\") {{",
-        target_func
-    )?;
-    writeln!(
-        output,
-        "                    if let Ok(s) = module.get_syscall_num(export) {{"
-    )?;
-    writeln!(output, "                        unsafe {{ SSN = s; }}")?;
-    writeln!(output, "                    }}")?;
-    writeln!(output, "                }}")?;
-    writeln!(output, "            }}")?;
-    writeln!(output, "        }});")?;
+        "#[cfg_attr(not(feature = \"hells_gate\"), inline)]
+pub unsafe fn {name}({args_decl_str}) {return_annotation} {{
+    #[cfg(not(feature = \"hells_gate\"))]
+    {{
+        unsafe {{ raw::{target_func}({arg_names_str}) }}
+    }}
+    #[cfg(feature = \"hells_gate\")]
+    {{
+        static mut SSN: u16 = 0;
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {{
+            if let Ok(module) = NativePERuntime::from_module(\"{dll}\") {{
+                if let Ok(export) = module.find_export(\"{target_func}\") {{
+                    if let Ok(s) = module.get_syscall_num(export) {{
+                        unsafe {{ SSN = s; }}
+                    }}
+                }}
+            }}
+        }});
+"
+    )
+    .unwrap();
 
     // Invocation via the syscall! macro
     // We explicitly cast the result to the expected return type
     let invocation_args = if arg_names_str.trim().is_empty() {
         String::new()
     } else {
-        format!(", {}", arg_names_str) // format args as: arg1, arg2
+        format!(", {arg_names_str}") // format args as: arg1, arg2
     };
 
     writeln!(
         output,
-        // Remove the hardcoded comma after SSN used in the template
-        "        crate::syscall!(unsafe {{ SSN }}{}) as {}",
-        invocation_args, return_type_str
+        "        crate::syscall!(unsafe {{ SSN }}{invocation_args}) as {return_type_str}
+    }}
+}}
+
+"
     )?;
-    writeln!(output, "    }}")?;
-    writeln!(output, "}}")?;
-    writeln!(output)?;
 
     Ok(())
 }
@@ -640,47 +606,23 @@ fn generate_single_wrapper(
 
     // Keep one public item per API. Only the implementation changes by feature,
     // which avoids parsing and type-checking duplicate signatures.
-    writeln!(
-        output,
-        "#[cfg_attr(not(feature = \"obfuscation\"), inline)]"
-    )?;
-    writeln!(
-        output,
-        "pub unsafe fn {}({}) {} {{",
-        name, args_decl_str, return_annotation
-    )?;
-    writeln!(output, "    #[cfg(not(feature = \"obfuscation\"))]")?;
-    writeln!(output, "    {{")?;
-    writeln!(
-        output,
-        "        unsafe {{ raw::{}({}) }}",
-        target_func, arg_names_str
-    )?;
-    writeln!(output, "    }}")?;
-    writeln!(output, "    #[cfg(feature = \"obfuscation\")]")?;
-    writeln!(output, "    {{")?;
-    writeln!(
-        output,
-        "        type FnType = unsafe extern \"system\" fn({}) -> {};",
-        fn_type_args_str, return_type_str
-    )?;
-    writeln!(
-        output,
-        "        static FN_PTR: ::std::sync::atomic::AtomicPtr<()> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());"
-    )?;
-    writeln!(
-        output,
-        "        let resolved_fn: FnType = unsafe {{ ::std::mem::transmute(resolver::resolve(&FN_PTR, \"{}\", \"{}\")) }};",
-        target_func, dll
-    )?;
-    writeln!(
-        output,
-        "        unsafe {{ resolved_fn({}) }}",
-        arg_names_str
-    )?;
-    writeln!(output, "    }}")?;
-    writeln!(output, "}}")?;
-    writeln!(output)?;
+    writeln!(output,
+"#[cfg_attr(not(feature = \"obfuscation\"), inline)]
+pub unsafe fn {name}({args_decl_str}) {return_annotation} {{
+    #[cfg(not(feature = \"obfuscation\"))]
+    {{
+        unsafe {{ raw::{target_func}({arg_names_str}) }}
+    }}
+    #[cfg(feature = \"obfuscation\")]
+    {{
+        type FnType = unsafe extern \"system\" fn({fn_type_args_str}) -> {return_type_str};
+        static FN_PTR: ::std::sync::atomic::AtomicPtr<()> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
+        let resolved_fn: FnType = unsafe {{ ::std::mem::transmute(resolver::resolve(&FN_PTR, \"{target_func}\", \"{dll}\")) }};
+        unsafe {{ resolved_fn({arg_names_str}) }}
+    }}
+}}
+
+")?;
 
     Ok(())
 }
@@ -713,7 +655,7 @@ fn type_to_string(ty: &syn::Type) -> String {
                                 .filter(|s| !s.is_empty())
                                 .collect::<Vec<_>>()
                                 .join(", ");
-                            format!("{}<{}>", ident, generic_args)
+                            format!("{ident}<{generic_args}>")
                         }
                         syn::PathArguments::Parenthesized(args) => {
                             let inputs = args
@@ -728,7 +670,7 @@ fn type_to_string(ty: &syn::Type) -> String {
                                     format!(" -> {}", type_to_string(ty))
                                 }
                             };
-                            format!("{}({}){}", ident, inputs, output)
+                            format!("{ident}({inputs}){output}")
                         }
                     }
                 })
@@ -778,7 +720,7 @@ fn type_to_string(ty: &syn::Type) -> String {
                     .map(type_to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!("({})", elems)
+                format!("({elems})")
             }
         }
         syn::Type::BareFn(bare_fn) => {
@@ -801,7 +743,7 @@ fn type_to_string(ty: &syn::Type) -> String {
                     let name = arg
                         .name
                         .as_ref()
-                        .map(|(ident, _)| format!("{}: ", ident))
+                        .map(|(ident, _)| format!("{ident}: "))
                         .unwrap_or_default();
                     format!("{}{}", name, type_to_string(&arg.ty))
                 })
@@ -813,7 +755,7 @@ fn type_to_string(ty: &syn::Type) -> String {
                 syn::ReturnType::Type(_, ty) => format!(" -> {}", type_to_string(ty)),
             };
 
-            format!("{}{}fn({}){}", unsafety, abi, inputs, output)
+            format!("{unsafety}{abi}fn({inputs}){output}")
         }
         _ => {
             // Fallback: use quote
@@ -1014,7 +956,7 @@ fn should_qualify_winapi_type(first_segment: &str) -> bool {
 }
 
 fn guess_dll(func_name: &str) -> &'static str {
-    let name_lower = func_name.to_lowercase();
+    let name_lower = func_name.to_ascii_lowercase();
 
     if name_lower.contains("openfilename")
         || name_lower.contains("savefilename")
@@ -1028,47 +970,40 @@ fn guess_dll(func_name: &str) -> &'static str {
         return "NTDLL.DLL";
     }
 
-    // Match based on keywords
-    match () {
-        _ if name_lower.contains("process")
-            || name_lower.contains("thread")
-            || name_lower.contains("library")
-            || name_lower.contains("module")
-            || name_lower.contains("toolhelp")
-            || name_lower.contains("heap")
-            || name_lower.contains("virtual")
-            || name_lower.contains("createfile") =>
-        {
-            "KERNEL32.DLL"
-        }
+    const RULES: &[(&str, &[&str])] = &[
+        (
+            "KERNEL32.DLL",
+            &[
+                "process",
+                "thread",
+                "library",
+                "module",
+                "toolhelp",
+                "heap",
+                "virtual",
+                "createfile",
+            ],
+        ),
+        (
+            "USER32.DLL",
+            &[
+                "window",
+                "message",
+                "dialog",
+                "menu",
+                "input",
+                "foreground",
+                "hook",
+            ],
+        ),
+        ("ADVAPI32.DLL", &["reg", "security", "service"]),
+        ("GDI32.DLL", &["gdi", "bitmap", "brush"]),
+        ("SHELL32.DLL", &["shell", "shget"]),
+    ];
 
-        _ if name_lower.contains("window")
-            || name_lower.contains("message")
-            || name_lower.contains("dialog")
-            || name_lower.contains("menu")
-            || name_lower.contains("input")
-            || name_lower.contains("foreground")
-            || name_lower.contains("hook") =>
-        {
-            "USER32.DLL"
-        }
-
-        _ if name_lower.contains("reg")
-            || name_lower.contains("security")
-            || name_lower.contains("service") =>
-        {
-            "ADVAPI32.DLL"
-        }
-
-        _ if name_lower.contains("gdi")
-            || name_lower.contains("bitmap")
-            || name_lower.contains("brush") =>
-        {
-            "GDI32.DLL"
-        }
-
-        _ if name_lower.contains("shell") || name_lower.contains("shget") => "SHELL32.DLL",
-
-        _ => "KERNEL32.DLL",
-    }
+    RULES
+        .iter()
+        .find(|(_, keywords)| keywords.iter().any(|keyword| name_lower.contains(keyword)))
+        .map(|(dll, _)| *dll)
+        .unwrap_or("KERNEL32.DLL")
 }
